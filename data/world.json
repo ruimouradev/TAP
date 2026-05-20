@@ -1,0 +1,139 @@
+{
+  "start_room": "loc.village_square",
+
+  "rooms": {
+    "loc.village_square": {
+      "name": "Village Square",
+      "description": "TODO",
+      "exits": { "north": "loc.bakery", "east": "loc.market", "south": "loc.gate", "west": "loc.inn" },
+      "items": [],
+      "npcs": ["npc.guard"]
+    },
+    "loc.bakery": {
+      "name": "Village Bakery",
+      "description": "TODO",
+      "exits": { "south": "loc.village_square" },
+      "items": ["item.bread"],
+      "npcs": ["npc.baker"]
+    },
+    "loc.market": {
+      "name": "Market",
+      "description": "TODO",
+      "exits": { "west": "loc.village_square", "north": "loc.forest_path" },
+      "items": ["item.herbs"],
+      "npcs": ["npc.merchant"]
+    },
+    "loc.inn": {
+      "name": "The Sleeping Dragon Inn",
+      "description": "TODO",
+      "exits": { "east": "loc.village_square" },
+      "items": [],
+      "npcs": []
+    },
+    "loc.gate": {
+      "name": "South Gate",
+      "description": "TODO",
+      "exits": { "north": "loc.village_square", "south": "loc.forest_entrance" },
+      "items": [],
+      "npcs": []
+    },
+    "loc.forest_entrance": {
+      "name": "Forest Entrance",
+      "description": "TODO",
+      "exits": { "north": "loc.gate", "east": "loc.forest_path", "south": "loc.deep_forest" },
+      "items": [],
+      "npcs": []
+    },
+    "loc.forest_path": {
+      "name": "Forest Path",
+      "description": "TODO",
+      "exits": { "south": "loc.market", "west": "loc.forest_entrance" },
+      "items": ["item.rusty_sword"],
+      "npcs": ["npc.goblin"]
+    },
+    "loc.deep_forest": {
+      "name": "Deep Forest",
+      "description": "TODO",
+      "exits": { "north": "loc.forest_entrance" },
+      "items": [],
+      "npcs": ["npc.goblin_chief"]
+    }
+  },
+
+  "items": {
+    "item.bread": {
+      "name": "Loaf of Bread",
+      "takeable": true
+    },
+    "item.herbs": {
+      "name": "Healing Herbs",
+      "takeable": true
+    },
+    "item.rusty_sword": {
+      "name": "Rusty Sword",
+      "takeable": true
+    },
+    "item.ancient_relic": {
+      "name": "Ancient Relic",
+      "takeable": false
+    }
+  },
+
+  "npcs": {
+    "npc.guard": {
+      "name": "Guard",
+      "role": "guard",
+      "hp": 80,
+      "hostile": false,
+      "dialogue": "Move along, citizen.",
+      "quest_id": ""
+    },
+    "npc.baker": {
+      "name": "Baker",
+      "role": "merchant",
+      "hp": 40,
+      "hostile": false,
+      "dialogue": "Welcome! Fresh bread straight from the oven.",
+      "quest_id": "quest.fetch_herbs"
+    },
+    "npc.merchant": {
+      "name": "Merchant",
+      "role": "merchant",
+      "hp": 40,
+      "hostile": false,
+      "dialogue": "Looking to trade?",
+      "quest_id": ""
+    },
+    "npc.goblin": {
+      "name": "Goblin",
+      "role": "enemy",
+      "hp": 30,
+      "hostile": true,
+      "dialogue": "GRRR!",
+      "quest_id": ""
+    },
+    "npc.goblin_chief": {
+      "name": "Goblin Chief",
+      "role": "enemy",
+      "hp": 80,
+      "hostile": true,
+      "dialogue": "You dare enter my forest?",
+      "quest_id": "quest.defeat_goblin_chief"
+    }
+  },
+
+  "quests": {
+    "quest.fetch_herbs": {
+      "description": "Bring 1 Healing Herbs to the Baker.",
+      "type": "fetch",
+      "target": "item.herbs",
+      "reward": "item.bread"
+    },
+    "quest.defeat_goblin_chief": {
+      "description": "Defeat the Goblin Chief in the Deep Forest.",
+      "type": "defeat",
+      "target": "npc.goblin_chief",
+      "reward": "item.rusty_sword"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+/*
+ * web/style.css — Owner: Alexandre.
+ *
+ * Styles for the TAP web GUI client.
+ * Design goal: readable, functional, terminal-inspired aesthetic.
+ * Layout: CSS Grid with panels for room, chat, inventory, and quests.
+ *
+ * Sections to style:
+ *   #status-bar    — top bar: player name, HP, room, online count
+ *   #layout        — main grid container
+ *   #room-panel    — room info, exits, items, NPCs, present players
+ *   #chat-panel    — tabbed chat (GLOBAL / ROOM / GROUP) + input
+ *   #inventory-panel — held items with DROP buttons
+ *   #quest-panel   — active and completed quests
+ */
+
+/* TODO: implement all styles */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  /* TODO: choose font, background, color scheme */
+}
+
+#status-bar {
+  /* TODO: fixed top bar */
+}
+
+#layout {
+  /* TODO: CSS Grid — room | chat | inventory/quests */
+}
+
+#room-panel {
+  /* TODO */
+}
+
+#chat-panel {
+  /* TODO: tab buttons + scrollable log + input row */
+}
+
+#inventory-panel {
+  /* TODO */
+}
+
+#quest-panel {
+  /* TODO */
+}
