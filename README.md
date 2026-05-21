@@ -45,10 +45,17 @@ The Hub's `select {}` loop processes register/unregister/command events one at a
 
 This implementation follows RFC 42TAP. Known deviations:
 
-| Command | RFC response | Our response | Reason |
-|---------|-------------|--------------|--------|
+| Command | RFC / V.5 example | Our response | Reason |
+|---------|-------------------|--------------|--------|
 | `WHO`   | `OK players=<count>` | `OK {"room":[...],"server":<n>}` | Subject examples show richer format |
 | `TALK`  | `OK <dialogue>` | `OK {"npc":"...","dialogue":"..."}` | Subject examples show JSON format |
+| `LOOK` (items) | `"items":["item.herbs"]` | `"items":[{"id":"item.herbs","name":"Healing Herbs"}]` | GUI needs the display name to render the room without a separate lookup; avoids a fragile client-side ID→name cache |
+| `LOOK` (npcs)  | `"npcs":["npc.baker"]` | `"npcs":[{"id":"npc.baker","name":"Baker","hostile":false}]` | Same as above, plus `hostile` flag so the GUI can colour enemies differently |
+| `INVENTORY` | `OK ["item.herbs"]` | `OK [{"id":"item.herbs","name":"Healing Herbs"}]` | Same reasoning: GUI needs names to display inventory |
+
+All deviations remain ABNF-compliant: the RFC's `response-data` production is `1*VCHAR`, so any JSON payload is valid. The V.5 examples in the subject are illustrative — the same examples already deviate from the RFC for `TALK` and `WHO`, confirming they are not literal specifications.
+
+For interoperability with other groups' servers that follow the V.5 example formats, the GUI's `parseItem()` helper in `web/app.js` accepts both shapes (plain ID string OR `{id, name}` object) and normalises them.
 
 ---
 

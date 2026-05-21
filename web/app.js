@@ -83,10 +83,28 @@ function handleLookResponse(data) {
 
 /**
  * handleInventoryResponse updates the inventory panel with a JSON item array.
- * @param {string[]} items  array of item IDs
+ * @param {Array<string|{id:string,name:string}>} items
+ *
+ * IMPORTANT: our server returns objects [{id, name}] so the GUI can show names.
+ * Other groups' servers may return plain ID strings ["item.herbs"] (RFC default).
+ * Always use parseItem() so the GUI works with both formats.
  */
 function handleInventoryResponse(items) {
   // TODO: implement
+}
+
+/**
+ * parseItem normalises an item from any server into {id, name}.
+ * Our server sends {id, name} objects; RFC-compliant servers send plain ID strings.
+ * Using this helper makes the GUI interoperable with both formats.
+ * @param {string|{id:string,name:string}} item
+ * @returns {{id:string, name:string}}
+ */
+function parseItem(item) {
+  if (typeof item === "string") {
+    return { id: item, name: item };
+  }
+  return item;
 }
 
 /**
