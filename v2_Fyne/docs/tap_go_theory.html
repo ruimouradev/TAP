@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TAP · Teoria & Go</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e0a;
+    --bg-panel:#0f150f;
+    --bg-panel-2:#121a12;
+    --phosphor:#39d353;
+    --phosphor-dim:#1f7a32;
+    --amber:#ffb000;
+    --amber-dim:#a87400;
+    --ink:#c8e6c8;
+    --ink-dim:#7da07d;
+    --line:#1c2a1c;
+    --danger:#ff5f56;
+    --cyan:#56d6d6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:15px;
+    line-height:1.72;
+    -webkit-font-smoothing:antialiased;
+    position:relative;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.22) 3px,rgba(0,0,0,0) 4px);
+    opacity:.35;mix-blend-mode:multiply;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9998;
+    background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.55) 100%);
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:64px 32px 120px}
+
+  /* ---- Header ---- */
+  header{border:1px solid var(--line);background:var(--bg-panel);position:relative;overflow:hidden;margin-bottom:56px}
+  header::before{
+    content:"";position:absolute;top:-40%;right:-10%;width:380px;height:380px;
+    background:radial-gradient(circle,rgba(57,211,83,.10),transparent 70%);
+  }
+  .term-bar{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--bg-panel-2)}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:var(--danger)}.dot.y{background:var(--amber)}.dot.g{background:var(--phosphor)}
+  .term-title{margin-left:12px;color:var(--ink-dim);font-size:12.5px;letter-spacing:.06em}
+  .head-body{padding:52px 44px 48px}
+  .kicker{color:var(--amber);font-size:12.5px;letter-spacing:.32em;text-transform:uppercase;margin-bottom:18px}
+  h1{
+    font-family:'VT323',monospace;font-weight:400;
+    font-size:clamp(52px,9vw,104px);line-height:.92;color:var(--phosphor);
+    letter-spacing:.01em;text-shadow:0 0 22px rgba(57,211,83,.45);
+  }
+  h1 .sub{display:block;font-size:clamp(20px,3vw,30px);color:var(--ink);text-shadow:none;margin-top:14px;letter-spacing:.04em}
+  .blurb{margin-top:26px;max-width:62ch;color:var(--ink-dim);font-size:14px}
+  .cursor{display:inline-block;width:11px;height:1.1em;background:var(--phosphor);margin-left:4px;vertical-align:-2px;animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* ---- TOC ---- */
+  nav.toc{border:1px solid var(--line);background:var(--bg-panel);padding:26px 30px;margin-bottom:64px}
+  nav.toc .lbl{color:var(--amber);font-size:12px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:16px}
+  nav.toc ol{list-style:none;display:grid;grid-template-columns:repeat(2,1fr);gap:6px 36px;counter-reset:t}
+  nav.toc li{counter-increment:t}
+  nav.toc a{color:var(--ink);text-decoration:none;display:flex;gap:14px;padding:5px 0;border-bottom:1px dashed transparent;transition:.16s}
+  nav.toc a::before{content:counter(t,decimal-leading-zero);color:var(--phosphor-dim);font-weight:600}
+  nav.toc a:hover{color:var(--phosphor);border-bottom-color:var(--line);padding-left:6px}
+
+  /* ---- Sections ---- */
+  section{margin-bottom:72px;scroll-margin-top:30px}
+  .sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:8px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .sec-num{font-family:'VT323',monospace;font-size:46px;color:var(--phosphor-dim);line-height:1}
+  h2{font-size:24px;font-weight:700;color:var(--phosphor);letter-spacing:.01em}
+  .sec-tag{margin-left:auto;font-size:11.5px;color:var(--ink-dim);border:1px solid var(--line);padding:4px 10px;letter-spacing:.1em;text-transform:uppercase;align-self:center}
+  h3{font-size:16.5px;color:var(--amber);margin:34px 0 12px;letter-spacing:.02em}
+  h3::before{content:"› ";color:var(--phosphor)}
+  p{margin:14px 0;color:var(--ink)}
+  p.lead{color:var(--ink-dim);font-size:14px;margin-top:18px}
+  strong{color:var(--phosphor);font-weight:600}
+  em{color:var(--amber);font-style:normal}
+  ul.l{list-style:none;margin:16px 0 16px 4px}
+  ul.l li{padding:7px 0 7px 26px;position:relative;color:var(--ink)}
+  ul.l li::before{content:"▸";position:absolute;left:0;color:var(--phosphor-dim)}
+  ul.l li b{color:var(--cyan);font-weight:600}
+
+  /* ---- Code ---- */
+  pre{
+    background:#070b07;border:1px solid var(--line);border-left:3px solid var(--phosphor-dim);
+    padding:20px 22px;margin:20px 0;overflow-x:auto;font-size:13px;line-height:1.7;
+    color:var(--ink);position:relative;
+  }
+  pre .c{color:var(--ink-dim);font-style:italic}
+  pre .k{color:var(--amber)}
+  pre .s{color:var(--cyan)}
+  pre .f{color:var(--phosphor)}
+  code{background:#070b07;border:1px solid var(--line);padding:1px 7px;font-size:13px;color:var(--cyan)}
+
+  /* ---- Callouts ---- */
+  .box{border:1px solid var(--line);padding:20px 24px;margin:22px 0;background:var(--bg-panel);position:relative}
+  .box .bt{font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px;font-weight:700}
+  .box.info{border-left:3px solid var(--cyan)}.box.info .bt{color:var(--cyan)}
+  .box.warn{border-left:3px solid var(--amber)}.box.warn .bt{color:var(--amber)}
+  .box.tip{border-left:3px solid var(--phosphor)}.box.tip .bt{color:var(--phosphor)}
+
+  /* ---- Owner badges ---- */
+  .owner{font-size:10.5px;padding:3px 9px;border:1px solid var(--line);letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-left:8px;align-self:center}
+  .owner.rui{color:var(--cyan);border-color:var(--cyan)}
+  .owner.alex{color:var(--amber);border-color:var(--amber)}
+  .owner.both{color:var(--phosphor);border-color:var(--phosphor-dim)}
+  .focus{border:1px dashed;padding:12px 16px;margin:18px 0;font-size:13px;display:flex;gap:12px;align-items:flex-start}
+  .focus .fl{font-family:'VT323',monospace;font-size:22px;line-height:1;letter-spacing:.05em;flex-shrink:0}
+  .focus.rui{border-color:var(--cyan);background:rgba(86,214,214,.04)}
+  .focus.rui .fl{color:var(--cyan)}
+  .focus.alex{border-color:var(--amber);background:rgba(255,176,0,.04)}
+  .focus.alex .fl{color:var(--amber)}
+  .focus.both{border-color:var(--phosphor-dim);background:rgba(57,211,83,.04)}
+  .focus.both .fl{color:var(--phosphor)}
+
+  /* ---- Resource cards ---- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;margin:22px 0}
+  .card{border:1px solid var(--line);background:var(--bg-panel);padding:20px;transition:.18s;display:flex;flex-direction:column;gap:8px}
+  .card:hover{border-color:var(--phosphor-dim);transform:translateY(-2px)}
+  .card .ct{color:var(--phosphor);font-weight:600;font-size:15px}
+  .card .cm{font-size:11.5px;color:var(--amber);letter-spacing:.08em;text-transform:uppercase}
+  .card p{font-size:13px;color:var(--ink-dim);margin:4px 0 0}
+  .card a{color:var(--cyan);text-decoration:none;font-size:12.5px;word-break:break-all;border-bottom:1px dotted var(--line)}
+  .card a:hover{color:var(--phosphor)}
+  .lvl{font-size:10.5px;padding:2px 8px;border:1px solid var(--line);color:var(--ink-dim);align-self:flex-start;letter-spacing:.08em}
+
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:10px 14px;text-align:left}
+  th{background:var(--bg-panel-2);color:var(--amber);font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:11.5px}
+  td b{color:var(--cyan)}
+
+  footer{border-top:1px solid var(--line);margin-top:90px;padding-top:30px;color:var(--ink-dim);font-size:12.5px;text-align:center;letter-spacing:.06em}
+  ::selection{background:var(--phosphor);color:var(--bg)}
+  @media(max-width:720px){.wrap{padding:40px 18px 80px}nav.toc ol{grid-template-columns:1fr}.head-body{padding:36px 24px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="term-bar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="term-title">tap@42lisboa: ~/the-answer-protocol — go theory</span>
+  </div>
+  <div class="head-body">
+    <div class="kicker">RFC 42TAP · Shared-World MUD · Linguagem: Go</div>
+    <h1>THE ANSWER<span class="sub">// Teoria completa do projeto + roadmap de Go<span class="cursor"></span></span></h1>
+    <p class="blurb">Tudo o que precisas de dominar para construir o servidor TCP, o cliente CLI e o cliente GUI em Go — mais um plano de estudo curado para aprenderem Go a sério, e não só "à justa para o projeto".</p>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="lbl">// Índice</div>
+  <ol>
+    <li><a href="#vis">Visão geral &amp; mapa mental</a></li>
+    <li><a href="#net">Rede TCP em Go</a></li>
+    <li><a href="#conc">Modelo de concorrência</a></li>
+    <li><a href="#proto">Framing &amp; protocolo de linha</a></li>
+    <li><a href="#state">Estado partilhado do mundo</a></li>
+    <li><a href="#discon">Desconexões &amp; shutdown</a></li>
+    <li><a href="#world">Dados do mundo (YAML/JSON)</a></li>
+    <li><a href="#items">Itens, combate &amp; quests</a></li>
+    <li><a href="#log">Logging estruturado</a></li>
+    <li><a href="#clients">Clientes CLI &amp; GUI</a></li>
+    <li><a href="#build">Build, lint &amp; testes</a></li>
+    <li><a href="#gotchas">Armadilhas de Go</a></li>
+    <li><a href="#learn">Aprender Go bem (recursos)</a></li>
+  </ol>
+</nav>
+
+<section id="vis">
+  <div class="sec-head"><span class="sec-num">01</span><h2>Visão geral &amp; mapa mental</h2><span class="sec-tag">conceito</span><span class="owner both">Ambos</span></div>
+  <p>O TAP é, na sua essência, <strong>um servidor de rede concorrente com um mundo partilhado</strong>. Tudo o resto (combate, quests, NPCs) é lógica de jogo que se constrói por cima. Se acertarem na arquitetura de rede e concorrência, o resto flui.</p>
+  <p>O coração do sistema é este ciclo: vários clientes ligam-se por TCP → cada um envia comandos de texto terminados em <code>\n</code> → o servidor valida, muta o estado do mundo, e faz <em>broadcast</em> de eventos para os clientes relevantes → tudo isto sem nunca bloquear nem corromper o estado partilhado.</p>
+  <div class="box info">
+    <div class="bt">Modelo mental Go</div>
+    Pensa em três tipos de goroutines: <b>(1)</b> uma que aceita ligações novas, <b>(2)</b> uma por cada cliente ligado (lê comandos desse cliente), e <b>(3)</b> uma única que é "dona" do mundo e processa tudo o que muta estado, em série. Esta última é o truque que elimina quase todos os race conditions.
+  </div>
+</section>
+
+<section id="net">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Rede TCP em Go</h2><span class="sec-tag">net</span><span class="owner rui">Rui</span></div>
+  <div class="focus rui"><span class="fl">▶</span><div><b>Rui:</b> domínio crítico — vais escrever o accept-loop, gerir <code>net.Conn</code> e os erros de rede. Lê toda a secção a fundo + exemplos do <code>net</code> package. <b>Alexandre:</b> só precisas de <code>net.Dial</code> para o cliente GUI Fyne se conectar ao servidor; leitura superficial chega.</div></div>
+  <p>Go traz tudo na biblioteca padrão. Não precisas de dependências para a rede. O padrão canónico de servidor TCP é:</p>
+  <pre><span class="k">func</span> <span class="f">main</span>() {
+    ln, err := net.<span class="f">Listen</span>(<span class="s">"tcp"</span>, <span class="s">":4242"</span>)
+    <span class="k">if</span> err != <span class="k">nil</span> { log.<span class="f">Fatal</span>(err) }
+    <span class="k">defer</span> ln.<span class="f">Close</span>()
+
+    <span class="k">for</span> {
+        conn, err := ln.<span class="f">Accept</span>()      <span class="c">// bloqueia até chegar um cliente</span>
+        <span class="k">if</span> err != <span class="k">nil</span> { <span class="k">continue</span> }
+        <span class="k">go</span> <span class="f">handleConn</span>(conn)          <span class="c">// uma goroutine por ligação</span>
+    }
+}</pre>
+  <p>O <code>go handleConn(conn)</code> é a magia: cada cliente é tratado em paralelo, sem threads manuais nem <code>select()</code> à C. Comparado com C, isto é uma redução brutal de complexidade — é por isto que Go foi a escolha certa para este projeto.</p>
+  <ul class="l">
+    <li><b>net.Listener</b> — o socket de escuta; <code>Accept()</code> devolve uma <code>net.Conn</code> por cliente.</li>
+    <li><b>net.Conn</b> — implementa <code>io.Reader</code> e <code>io.Writer</code>. Lês e escreves como se fosse um ficheiro.</li>
+    <li><b>Sempre <code>defer conn.Close()</code></b> dentro de <code>handleConn</code> — garante limpeza mesmo com erro/pânico.</li>
+  </ul>
+</section>
+
+<section id="conc">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Modelo de concorrência: o Hub</h2><span class="sec-tag">goroutines</span><span class="owner rui">Rui</span></div>
+  <div class="focus rui"><span class="fl">▶</span><div><b>Rui:</b> esta é <em>a</em> secção mais importante para ti. O Hub é o coração do servidor — se não dominares isto, vais ter races para o resto da vida. Lê duas vezes + cap. 8 do Donovan & Kernighan. <b>Alexandre:</b> útil ler para a defesa do código, mas não vais escrever nada disto.</div></div>
+  <p>Esta é a secção mais importante do projeto. Há duas abordagens válidas para proteger o estado partilhado:</p>
+  <h3>Abordagem A — Mutex (sync.RWMutex)</h3>
+  <p>Envolves o estado do mundo num <code>sync.RWMutex</code> e cada goroutine de cliente faz <code>Lock()</code> antes de mutar. Funciona, mas é fácil esquecer um lock e introduzir uma race; e o broadcast com lock segurado pode bloquear toda a gente.</p>
+  <h3>Abordagem B — Hub / Actor (RECOMENDADA)</h3>
+  <p>Uma única goroutine é dona do mundo. Os clientes não tocam no estado diretamente: enviam <em>mensagens</em> por channels para o Hub, que processa tudo em série. Isto segue o lema oficial de Go: <strong>"Don't communicate by sharing memory; share memory by communicating."</strong></p>
+  <pre><span class="k">type</span> Hub <span class="k">struct</span> {
+    register   <span class="k">chan</span> *Client
+    unregister <span class="k">chan</span> *Client
+    commands   <span class="k">chan</span> Command   <span class="c">// comando + quem o enviou</span>
+    clients    <span class="k">map</span>[*Client]<span class="k">bool</span>
+    world      *World            <span class="c">// só o Hub lhe toca</span>
+}
+
+<span class="k">func</span> (h *Hub) <span class="f">Run</span>() {
+    <span class="k">for</span> {
+        <span class="k">select</span> {
+        <span class="k">case</span> c := &lt;-h.register:   h.clients[c] = <span class="k">true</span>
+        <span class="k">case</span> c := &lt;-h.unregister: h.<span class="f">removePlayer</span>(c)   <span class="c">// remove ANTES do broadcast</span>
+        <span class="k">case</span> cmd := &lt;-h.commands:  h.<span class="f">dispatch</span>(cmd)
+        }
+    }
+}</pre>
+  <div class="box tip">
+    <div class="bt">Porque é que isto resolve tudo</div>
+    Como só o Hub muta o mundo, e processa um evento de cada vez, <b>não existem race conditions sobre o estado do jogo</b> — sem um único mutex. Cada cliente tem ainda uma goroutine de leitura (recebe do socket → manda <code>Command</code> ao Hub) e tipicamente uma de escrita (lê de um channel buffered → escreve no socket). O broadcast nunca bloqueia o Hub se usares channels buffered por cliente.
+  </div>
+  <ul class="l">
+    <li><b>channels</b> — o canal de comunicação entre goroutines; pensa numa fila tipada e segura.</li>
+    <li><b>select</b> — espera em vários channels ao mesmo tempo; é o coração do loop do Hub.</li>
+    <li><b>buffered channel por cliente</b> — <code>send chan string</code> com buffer; se o cliente for lento, não trava o servidor (e podes desligá-lo se o buffer encher).</li>
+    <li><b>Corre sempre com <code>-race</code></b> durante o desenvolvimento para apanhar acessos concorrentes.</li>
+  </ul>
+</section>
+
+<section id="proto">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Framing &amp; protocolo de linha</h2><span class="sec-tag">RFC 42TAP</span><span class="owner both">Ambos</span></div>
+  <div class="focus both"><span class="fl">▶</span><div><b>Ambos:</b> o pacote <code>protocol</code> é o contrato partilhado — toca aos dois. O Rui usa-o para parsear/formatar no servidor; o Alexandre usa os mesmos structs em Go para parsear no GUI Fyne (mesma linguagem dos dois lados, sem reescrever). Saber isto a fundo é essencial para a defesa.</div></div>
+  <p>O protocolo é <strong>line-based, UTF-8, uma mensagem por linha terminada em <code>\n</code></strong>. Em Go, ler linhas é trivial com <code>bufio</code>:</p>
+  <pre>scanner := bufio.<span class="f">NewScanner</span>(conn)
+<span class="k">for</span> scanner.<span class="f">Scan</span>() {
+    line := scanner.<span class="f">Text</span>()        <span class="c">// uma linha, sem o \n</span>
+    cmd  := <span class="f">parseCommand</span>(line)   <span class="c">// "MOVE north" -> Command{Verb:"MOVE", Args:["north"]}</span>
+    hub.commands &lt;- Command{Client: c, Raw: cmd}
+}</pre>
+  <div class="box warn">
+    <div class="bt">Atenção: limite do Scanner</div>
+    <code>bufio.Scanner</code> tem um limite default de 64KB por linha e dá erro em linhas maiores. Para mensagens grandes (ex.: payloads JSON de <code>LOOK</code>) aumenta o buffer com <code>scanner.Buffer(buf, maxSize)</code>, ou usa <code>bufio.Reader.ReadString('\n')</code>. Documenta a escolha no README.
+  </div>
+  <p>Para a <strong>conformidade com a RFC</strong>: define cedo um pacote <code>protocol</code> partilhado entre servidor e clientes, com as estruturas de comando, os códigos de resposta (<code>OK</code>, <code>EVT</code>, <code>ERR</code>) e os formatos de evento. Este pacote é o <em>contrato</em> — quem mexer nele avisa o outro. Lembra-te que a spec exige que os clientes sejam <strong>interoperáveis entre grupos</strong>, por isso o formato do <em>wire</em> tem de seguir a RFC à risca; só a UI/UX dos clientes é livre.</p>
+  <ul class="l">
+    <li><b>Respostas</b>: <code>OK ...</code> para sucesso, <code>EVT &lt;scope&gt; ...</code> para eventos push, <code>ERR &lt;code&gt; ...</code> para erros.</li>
+    <li><b>Comando malformado</b> → resposta de erro <em>protocol-compliant</em>, nunca crashar.</li>
+    <li><b>Dispatcher</b>: um <code>map[string]HandlerFunc</code> mantém o código limpo e escalável face aos ~15 comandos.</li>
+  </ul>
+</section>
+
+<section id="state">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Estado partilhado do mundo</h2><span class="sec-tag">domain</span><span class="owner rui">Rui</span></div>
+  <div class="focus rui"><span class="fl">▶</span><div><b>Rui:</b> tu desenhas o modelo <code>World/Room/Player/NPC</code> e todas as mutações. Lê a fundo. <b>Alexandre:</b> útil para perceberes a forma dos dados que envias para o GUI; saltar detalhes de implementação.</div></div>
+  <p>Modela o domínio com structs simples. Mantém o estado mutável (jogadores, itens no chão, HP dos NPCs) separado dos dados estáticos carregados dos ficheiros (a planta das salas, definições de itens).</p>
+  <pre><span class="k">type</span> Room <span class="k">struct</span> {
+    ID, Name, Desc <span class="k">string</span>
+    Exits map[<span class="k">string</span>]<span class="k">string</span>   <span class="c">// "north" -> roomID</span>
+    Items map[<span class="k">string</span>]*Item   <span class="c">// instâncias únicas no chão</span>
+    NPCs  []*NPC
+    Players map[<span class="k">string</span>]*Player
+}</pre>
+  <p>Como decidimos na secção 03 que <strong>só o Hub muta o mundo</strong>, estas structs <em>não precisam de mutexes</em>. Toda a mutação passa por um handler chamado dentro do loop do Hub. Isto mantém o modelo de domínio limpo e o raciocínio sobre correção é trivial: "uma coisa de cada vez".</p>
+</section>
+
+<section id="discon">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Desconexões &amp; shutdown gracioso</h2><span class="sec-tag">robustez</span><span class="owner rui">Rui</span></div>
+  <div class="focus rui"><span class="fl">▶</span><div><b>Rui:</b> o avaliador vai matar clientes a meio de broadcasts e dar Ctrl+C para ver se o server cai — secção crítica para passar "Robustness" na correction sheet. <b>Alexandre:</b> superficial; só precisas de saber que a tua GUI tem de fechar a TCP e mostrar uma mensagem quando o servidor cair.</div></div>
+  <p>A spec é explícita: <strong>remover o estado do jogador ANTES de fazer broadcast do evento de saída</strong>, e o servidor tem de continuar a transmitir a outros mesmo que um cliente desligue a meio do envio.</p>
+  <ul class="l">
+    <li>Quando <code>scanner.Scan()</code> devolve <code>false</code> (cliente desligou), a goroutine envia <code>hub.unregister &lt;- c</code> e termina (via <code>defer</code>).</li>
+    <li>O Hub remove o jogador da sala/mapa e <em>só depois</em> faz broadcast de <code>EVT ROOM PRESENCE LEAVE</code>.</li>
+    <li>Escritas para clientes lentos/mortos não podem travar o Hub: usa <code>select</code> com <code>default</code> ou um channel buffered por cliente; se a escrita falhar, desliga esse cliente, mas continua os outros.</li>
+    <li><b>Shutdown limpo</b>: <code>signal.NotifyContext(ctx, os.Interrupt)</code> + um <code>context.Context</code> propagado fecha o listener e as goroutines de forma ordenada no <code>Ctrl+C</code>.</li>
+  </ul>
+  <div class="box info">
+    <div class="bt">Idioma Go: errors são valores</div>
+    Em Go não há exceções. Verifica <code>err</code> sempre. Para fluxo de controlo de shutdown, usa <code>context</code>. Reserva <code>panic</code>/<code>recover</code> só para falhas irrecuperáveis — e protege as goroutines de clientes com <code>recover</code> para que um bug num cliente nunca derrube o servidor inteiro.
+  </div>
+</section>
+
+<section id="world">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Dados do mundo (YAML / JSON)</h2><span class="sec-tag">loader</span><span class="owner alex">Alexandre</span></div>
+  <div class="focus alex"><span class="fl">▶</span><div><b>Alexandre:</b> domínio crítico — tu escreves o <code>worldfile</code> (loader + validator) e desenhas o <code>world.json</code>. Lê a fundo. <b>Rui:</b> útil para perceberes a forma dos dados que carregas para o <code>game.World</code>, mas o parsing é dele.</div></div>
+  <p>A spec aceita YAML ou JSON. <strong>Recomendo JSON</strong> para começar — está na biblioteca padrão (<code>encoding/json</code>), zero dependências. Se preferirem YAML pela legibilidade, usem <code>gopkg.in/yaml.v3</code>.</p>
+  <pre><span class="k">type</span> WorldFile <span class="k">struct</span> {
+    Locations map[<span class="k">string</span>]RoomDef <span class="s">`json:"locations"`</span>
+    Items     map[<span class="k">string</span>]ItemDef <span class="s">`json:"items"`</span>
+    NPCs      map[<span class="k">string</span>]NPCDef  <span class="s">`json:"npcs"`</span>
+}
+data, _ := os.<span class="f">ReadFile</span>(<span class="s">"data/world.json"</span>)
+<span class="k">var</span> wf WorldFile
+json.<span class="f">Unmarshal</span>(data, &amp;wf)</pre>
+  <p>Crucial (requisito da spec): <strong>validar todas as saídas e referências</strong> depois de carregar. Antes de aceitar clientes, percorre todas as salas e confirma que cada <code>exit</code> aponta para uma sala existente, que cada item/NPC referenciado existe. Falha cedo e com mensagem clara se o mundo for inconsistente — é exatamente o tipo de robustez que distingue um projeto bem feito.</p>
+  <p>Requisitos mínimos do mundo a desenhar: ≥8 salas interligadas formando <em>loops</em> (circuito completo, não linha) + 1 ramo opcional, ≥3 papéis de NPC, ≥4 itens (≥2 obteníveis), ≥2 quests.</p>
+</section>
+
+<section id="items">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Itens, combate &amp; quests</h2><span class="sec-tag">game logic</span><span class="owner rui">Rui</span></div>
+  <div class="focus rui"><span class="fl">▶</span><div><b>Rui:</b> toda a lógica de jogo é tua. As decisões de design (fórmula de damage, mecânica de quests) têm de ser documentadas no README e defendidas na avaliação. <b>Alexandre:</b> precisas de perceber as decisões para renderizar combate/quests no GUI e para responder em defesa.</div></div>
+  <h3>Sistema de itens</h3>
+  <ul class="l">
+    <li>Itens são <b>instâncias únicas</b> — <code>TAKE</code> remove da sala (sem duplicar), <code>DROP</code> devolve à sala.</li>
+    <li>Resolução por <b>ID ou nome</b>, com suporte a <b>nomes multi-palavra</b> ("rusty key"). Normaliza para lowercase ao comparar nomes.</li>
+  </ul>
+  <h3>Combate (decisão de design — documentar no README)</h3>
+  <p>A spec deixa as mecânicas ao vosso critério mas exige: jogadores começam com 100 HP, NPCs inimigos com HP variável, <code>ATTACK</code> causa dano e pode gerar contra-ataque, <code>STATUS</code> mostra HP, jogador a 0 HP renasce num local seguro com HP reduzido, resultados de combate logados e transmitidos. Documenta a fórmula de dano, ordem de iniciativa e comandos extra (<code>DEFEND</code>, <code>FLEE</code>) — manter simples e determinístico facilita a defesa na avaliação.</p>
+  <h3>Quests (decisão de design — documentar no README)</h3>
+  <p>≥2 quests simples (fetch item, derrotar NPC, entregar item). Modela o progresso por jogador como uma máquina de estados pequena: <code>NotStarted → Active → Completed</code>. Define explicitamente a validação de conclusão e o sistema de recompensa.</p>
+</section>
+
+<section id="log">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Logging estruturado</h2><span class="sec-tag">log/slog</span><span class="owner rui">Rui</span></div>
+  <div class="focus rui"><span class="fl">▶</span><div><b>Rui:</b> a correction sheet tem 10 pontos só sobre logging — secção crítica. Lê a fundo + define cedo as conventions (campos, níveis). <b>Alexandre:</b> só precisas de saber que o servidor faz log estruturado em stdout; não escreves nada do logging.</div></div>
+  <p>A spec exige logging estruturado (JSON recomendado), com níveis INFO/WARN/ERROR, timestamps precisos, e cobrindo conexões, comandos, respostas, mudanças de estado, quests e padrões de abuso. Go tem isto na stdlib desde a 1.21: <code>log/slog</code>.</p>
+  <pre>logger := slog.<span class="f">New</span>(slog.<span class="f">NewJSONHandler</span>(os.Stdout, <span class="k">nil</span>))
+logger.<span class="f">Info</span>(<span class="s">"command"</span>,
+    <span class="s">"player"</span>, p.Name, <span class="s">"verb"</span>, cmd.Verb,
+    <span class="s">"args"</span>, cmd.Args, <span class="s">"ip"</span>, conn.RemoteAddr())</pre>
+  <ul class="l">
+    <li>Cada linha de log é um objeto JSON — fácil de fazer <code>grep</code>/parse, exatamente o que a spec pede.</li>
+    <li>Níveis: <code>slog.Info</code> / <code>slog.Warn</code> / <code>slog.Error</code>.</li>
+    <li>Para detetar abuso (flooding de comandos, conexões rápidas), conta eventos por cliente numa janela temporal e loga <code>WARN</code> ao ultrapassar um limiar.</li>
+    <li>Logging não pode degradar performance: o handler do slog é eficiente; evita formatar strings caras se o nível não for emitido.</li>
+  </ul>
+</section>
+
+<section id="clients">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Clientes CLI &amp; GUI</h2><span class="sec-tag">clients</span><span class="owner both">Ambos</span></div>
+  <div class="focus both"><span class="fl">▶</span><div><b>Rui:</b> domina as subsecções <em>Cliente CLI</em> e duas goroutines de I/O. <b>Alexandre:</b> domina <em>Cliente GUI Fyne</em> — o resto do GUI é todo teu.</div></div>
+  <h3>Cliente CLI <span class="owner rui" style="font-size:9.5px;padding:2px 7px;margin-left:6px;vertical-align:middle">Rui</span></h3>
+  <p>O desafio: continuar a receber eventos do servidor <em>enquanto</em> espera input do utilizador. Solução idiomática em Go — duas goroutines:</p>
+  <pre><span class="k">go</span> <span class="k">func</span>() {                          <span class="c">// goroutine: lê do servidor e imprime</span>
+    s := bufio.<span class="f">NewScanner</span>(conn)
+    <span class="k">for</span> s.<span class="f">Scan</span>() { fmt.<span class="f">Println</span>(s.<span class="f">Text</span>()) }
+}()
+in := bufio.<span class="f">NewScanner</span>(os.Stdin)   <span class="c">// main: lê do teclado e envia</span>
+<span class="k">for</span> in.<span class="f">Scan</span>() { fmt.<span class="f">Fprintf</span>(conn, <span class="s">"%s\n"</span>, in.<span class="f">Text</span>()) }</pre>
+  <p>A spec permite duas abordagens: enviar comandos RFC crus, ou um CLI amigável que traduz para pacotes RFC nos bastidores. Documenta a escolha.</p>
+  <h3>Cliente GUI Fyne <span class="owner alex" style="font-size:9.5px;padding:2px 7px;margin-left:6px;vertical-align:middle">Alexandre</span></h3>
+  <div class="box tip">
+    <div class="bt">Recomendação</div>
+    Para manter tudo em Go puro e evitar HTML/JS/CSS, usamos <b>Fyne</b> (<code>fyne.io/fyne/v2</code>) — toolkit nativa, cross-platform, API simples. A spec permite "any graphical toolkit" e dá Qt/GTK/web como exemplos. Em Linux o Fyne precisa de CGO e dos headers gráficos do sistema (X11/OpenGL) — testar no PC da escola <em>antes</em> de avançar (ver <code>testeFyne/</code>). Nota: <code>curses</code> conta como texto, <b>não</b> como GUI.
+  </div>
+  <p>O GUI tem de mostrar sala/itens/NPCs/saídas com updates em tempo real, inventário, botões para todas as ações, separar chat (Global/Room/Group) do log, e contadores de jogadores na sala/servidor.</p>
+
+  <h3>Arquitetura do cliente Fyne <span class="owner alex" style="font-size:9.5px;padding:2px 7px;margin-left:6px;vertical-align:middle">Alexandre</span></h3>
+  <p>O cliente é um único binário Go que abre uma janela e fala TCP direto com o servidor TAP — sem bridge, sem servidor HTTP intermédio. Duas goroutines: a do Fyne (event loop da UI) e uma de leitura de rede que empurra linhas para um canal.</p>
+  <pre><span class="c">// cmd/gui/main.go — esqueleto</span>
+<span class="k">func</span> <span class="f">main</span>() {
+    conn, _ := net.<span class="f">Dial</span>(<span class="s">"tcp"</span>, <span class="s">"localhost:4242"</span>)         <span class="c">// 1. ligar ao servidor TAP</span>
+    a := app.<span class="f">New</span>()
+    w := a.<span class="f">NewWindow</span>(<span class="s">"TAP"</span>)
+    events := <span class="k">make</span>(<span class="k">chan</span> <span class="k">string</span>, <span class="n">64</span>)
+    <span class="k">go</span> <span class="f">readLoop</span>(conn, events)                            <span class="c">// 2. goroutine de leitura</span>
+    w.<span class="f">SetContent</span>(<span class="f">buildLayout</span>(conn, events))                <span class="c">// 3. painéis + handlers</span>
+    w.<span class="f">ShowAndRun</span>()                                          <span class="c">// 4. event loop Fyne</span>
+}
+
+<span class="k">func</span> <span class="f">readLoop</span>(conn net.Conn, events <span class="k">chan</span>&lt;- <span class="k">string</span>) {
+    s := bufio.<span class="f">NewScanner</span>(conn)
+    <span class="k">for</span> s.<span class="f">Scan</span>() { events &lt;- s.<span class="f">Text</span>() }              <span class="c">// linha-a-linha</span>
+    <span class="f">close</span>(events)
+}</pre>
+  <ul class="l">
+    <li><b><code>fyne.io/fyne/v2</code></b> — toolkit. Instala com <code>go get fyne.io/fyne/v2</code>. Widgets principais: <code>widget.Label</code>, <code>widget.Button</code>, <code>widget.Entry</code>, <code>widget.List</code>, containers <code>container.NewVBox/HBox/Border/AppTabs</code>.</li>
+    <li><b><code>net.Dial</code></b> — abrir uma conexão TCP como cliente (o oposto de <code>net.Listen</code>). Devolve uma <code>net.Conn</code> que se usa exatamente como a do servidor.</li>
+    <li><b>Padrão de leitura</b> — uma goroutine bloqueada num <code>bufio.Scanner</code> sobre a <code>net.Conn</code>, a empurrar cada linha para um <code>chan string</code>. Outra goroutine (a da UI) consome o canal e refresca widgets.</li>
+    <li><b>Atualizar a UI de outra goroutine</b> — Fyne exige que mudanças aos widgets passem por <code>fyne.Do(func(){ ... })</code> ou por chamadas idempotentes a <code>widget.Refresh()</code> a partir da goroutine main; nunca toques nos widgets diretamente da goroutine de rede.</li>
+    <li><b>Enviar comandos</b> — handlers dos botões chamam <code>fmt.Fprintf(conn, "%s\n", line)</code> ou um helper <code>sendCommand(conn, verb, args...)</code> que formata via <code>internal/protocol</code>.</li>
+  </ul>
+  <div class="box warn">
+    <div class="bt">Dependências de sistema (Linux)</div>
+    Fyne usa CGO e liga-se a OpenGL + X11. Em Linux, precisa dos pacotes de desenvolvimento (<code>xorg-dev</code>, <code>libgl1-mesa-dev</code> em Debian/Ubuntu). Se os PCs da escola não os tiverem, o build falha. Por isso a pasta <code>testeFyne/</code> existe — corre o teste lá <em>antes</em> de assumir que Fyne funciona no ambiente de avaliação.
+  </div>
+</section>
+
+<section id="build">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Build, lint &amp; testes</h2><span class="sec-tag">tooling</span><span class="owner both">Ambos</span></div>
+  <div class="focus both"><span class="fl">▶</span><div><b>Alexandre:</b> o Makefile é teu — garante que <code>make deps/run-server/run-client/run-client-gui/lint/clean</code> funciona sempre. <b>Rui:</b> escreve testes do <code>protocol</code> e da lógica de mundo. <b>Ambos:</b> correr com <code>-race</code> antes de cada PR.</div></div>
+  <p>A spec exige um build tool com alvos: instalar dependências, run-server, run-client, run-client-gui, lint, clean. Em Go: <strong>Go modules + um Makefile fino por cima</strong>.</p>
+  <pre><span class="c"># Makefile</span>
+deps:        ; go mod download
+run-server:  ; go run ./cmd/server data/world.json
+run-client:  ; go run ./cmd/cli localhost:4242
+run-client-gui: ; go run ./cmd/gui
+lint:        ; gofmt -l . &amp;&amp; go vet ./... &amp;&amp; golangci-lint run
+clean:       ; go clean &amp;&amp; rm -rf bin/</pre>
+  <ul class="l">
+    <li><b>go mod init</b> arranca o módulo; dependências são automáticas via <code>go.mod</code>/<code>go.sum</code>.</li>
+    <li><b>gofmt</b> — formatação não é negociável em Go; corre sempre. <b>go vet</b> apanha bugs comuns. <b>golangci-lint</b> é o linter agregado standard.</li>
+    <li><b>Testes</b>: ficheiros <code>_test.go</code> + <code>go test ./...</code>. Testa o pacote <code>protocol</code> (parsing/serialização) e a lógica do mundo sem rede. Para multiplayer, escreve um teste que liga 2+ clientes via <code>net.Dial</code> e verifica eventos.</li>
+    <li>Corre o servidor e os testes com <code>-race</code> regularmente.</li>
+  </ul>
+</section>
+
+<section id="gotchas">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Armadilhas de Go (vindos de C/Python)</h2><span class="sec-tag">gotchas</span><span class="owner both">Ambos</span></div>
+  <div class="focus both"><span class="fl">▶</span><div><b>Ambos:</b> leitura rápida obrigatória. Estes erros acontecem aos dois e podem custar horas de debugging. Voltem aqui quando algo "não devia estar a falhar".</div></div>
+
+  <h3>Vindos de Python (mais comuns para vocês)</h3>
+  <ul class="l">
+    <li><b>Erros são valores, não excepções</b> — em Python apanhas com <code>try/except</code>; em Go cada chamada que pode falhar devolve <code>(result, error)</code> e tens de verificar <code>if err != nil</code> à mão, todas as vezes. Não há <code>raise</code>. <code>panic</code> existe mas é para situações inrecuperáveis, não para fluxo normal.</li>
+    <li><b>Tipos estáticos, sem <code>Any</code></b> — não dá para meter um <code>int</code> onde se espera <code>string</code>. Sem duck typing. Para "qualquer tipo" usa-se <code>any</code> (alias de <code>interface{}</code>), mas tens de fazer <em>type assertion</em> para usar: <code>v.(string)</code>.</li>
+    <li><b>Não há list comprehensions nem map/filter</b> — sente-se a falta no início. Em Go escreves um <code>for range</code> normal e <code>append</code> ao slice. É mais verboso mas mais legível.</li>
+    <li><b><code>nil</code> ≠ <code>None</code></b> — só pointers, slices, maps, channels, interfaces e funções podem ser <code>nil</code>. <code>int</code>, <code>string</code>, <code>bool</code> nunca são nil (têm zero-values: <code>0</code>, <code>""</code>, <code>false</code>).</li>
+    <li><b>Bool estrito</b> — <code>if x</code> não funciona com strings ou números como em Python. Tem de ser uma expressão booleana: <code>if x != ""</code>, <code>if x &gt; 0</code>, etc.</li>
+    <li><b>Concorrência real (sem GIL)</b> — goroutines correm em paralelo de verdade em múltiplos cores. O preço: race conditions são possíveis. Daí o padrão Hub e o <code>-race</code> detector.</li>
+    <li><b>Maps escritos em paralelo dão crash</b> — em Python o GIL protege. Em Go, dois goroutines a escrever no mesmo <code>map</code> ao mesmo tempo: panic. Daí o Hub ser o único dono do mundo.</li>
+    <li><b>Sem REPL prático</b> — não há <code>python -i</code> equivalente. O ciclo é <code>go run file.go</code> ou testes (<code>go test</code>). Aprende a usar testes como REPL.</li>
+    <li><b>Strings são bytes UTF-8</b> — iterar com <code>for i := range s</code> dá bytes; com <code>for _, r := range s</code> dá runes (caracteres Unicode). Diferente de Python onde <code>for c in s</code> dá sempre caracteres.</li>
+    <li><b>Sem keyword arguments</b> — funções aceitam só argumentos posicionais. Para "named args" usa-se um struct de opções.</li>
+    <li><b>Indentação não é sintaxe</b> — chavetas mandam. Mas o <code>gofmt</code> formata por ti, não há discussão de estilo.</li>
+  </ul>
+
+  <h3>Vindos de C (também aplicáveis)</h3>
+  <ul class="l">
+    <li><b>Não há ponteiros aritméticos</b> — esquece <code>p++</code> ou <code>p + n</code>. Slices substituem quase todos os casos.</li>
+    <li><b>Garbage collector existe</b> — não chamas <code>free()</code>; o GC trata da memória. Mas atenção a <em>leaks lógicos</em>: goroutines que ficam vivas, referências em maps que nunca apagas.</li>
+    <li><b>Slices partilham array subjacente</b> — fatiar um slice cria uma <em>view</em>, não uma cópia. Modificar uma fatia altera o original. Em dúvida: <code>copy()</code>.</li>
+    <li><b><code>nil</code> maps dão panic ao escrever</b> — <code>var m map[string]int; m["x"] = 1</code> crasha. Tens de fazer <code>m := make(map[string]int)</code> ou <code>m := map[string]int{}</code>.</li>
+    <li><b><code>defer</code> em loop</b> — defers correm no fim da <em>função</em>, não da iteração. Não acumules <code>defer conn.Close()</code> num <code>for</code> infinito.</li>
+    <li><b>Não há macros nem preprocessador</b> — Go não tem <code>#define</code>. Usa constantes ou funções inline pequenas.</li>
+    <li><b>Headers não existem</b> — exportação é por capitalização: <code>Foo</code> é público, <code>foo</code> é privado ao pacote.</li>
+  </ul>
+
+  <h3>Específicas de concorrência (críticas para o servidor)</h3>
+  <ul class="l">
+    <li><b>Variável de loop capturada em goroutine</b> — clássico. Em Go &lt;1.22 tens de copiar a variável (<code>x := x</code>) antes do <code>go func()</code>. Em 1.22+ está resolvido, mas confirma a versão.</li>
+    <li><b>Goroutine leaks</b> — uma goroutine que bloqueia para sempre num channel nunca morre. Garante saída via <code>context</code> ou fecho de channel.</li>
+    <li><b>Deadlock em channels não-buffered</b> — enviar sem ninguém a receber bloqueia. O padrão Hub + channels buffered por cliente evita isto.</li>
+    <li><b>Não ignores erros com <code>_</code></b> só para compilar — trata-os; é metade da disciplina de Go.</li>
+  </ul>
+</section>
+
+<section id="learn">
+  <div class="sec-head"><span class="sec-num">13</span><h2>Aprender Go bem — recursos</h2><span class="sec-tag">roadmap</span><span class="owner both">Ambos</span></div>
+  <div class="focus both"><span class="fl">▶</span><div><b>Ambos:</b> Fase 1 obrigatória para os dois (paralelo). Fase 2 sobretudo para o Rui (concorrência avançada). Fase 3+ opcional; o Alexandre acrescenta o tutorial de Fyne (<a href="https://docs.fyne.io">docs.fyne.io</a>) à sua lista.</div></div>
+  <p class="lead">Não basta "Go à justa para o projeto". Esta sequência leva-vos de zero a confortável com concorrência — exatamente o que o TAP exige. Sigam por ordem.</p>
+
+  <h3>Fase 1 — Fundamentos (1ª semana, em paralelo)</h3>
+  <div class="grid">
+    <div class="card">
+      <span class="cm">Interativo · Oficial</span>
+      <div class="ct">A Tour of Go</div>
+      <span class="lvl">INICIANTE</span>
+      <p>O ponto de partida obrigatório. Sintaxe, tipos, métodos e — crucialmente — goroutines e channels, tudo no browser. Faz <em>todos</em> os exercícios.</p>
+      <a href="https://go.dev/tour">go.dev/tour</a>
+    </div>
+    <div class="card">
+      <span class="cm">Referência · Exemplos</span>
+      <div class="ct">Go by Example</div>
+      <span class="lvl">INICIANTE</span>
+      <p>Exemplos curtos e executáveis de cada conceito. Vai ser a vossa referência diária — vê especialmente goroutines, channels, select, timeouts e worker pools.</p>
+      <a href="https://gobyexample.com">gobyexample.com</a>
+    </div>
+    <div class="card">
+      <span class="cm">Prática · TDD</span>
+      <div class="ct">Learn Go with Tests</div>
+      <span class="lvl">INICIANTE→MÉDIO</span>
+      <p>Aprende Go escrevendo testes do zero. Tem secções dedicadas a concorrência e sync — diretamente aplicável ao TAP. Excelente para criar o hábito de testar.</p>
+      <a href="https://quii.gitbook.io/learn-go-with-tests">quii.gitbook.io/learn-go-with-tests</a>
+    </div>
+  </div>
+
+  <h3>Fase 2 — Idiomas &amp; profundidade (semana 1–2)</h3>
+  <div class="grid">
+    <div class="card">
+      <span class="cm">Oficial · Leitura</span>
+      <div class="ct">Effective Go</div>
+      <span class="lvl">MÉDIO</span>
+      <p>O documento que ensina a escrever Go <em>idiomático</em>, não "C com sintaxe de Go". Leitura obrigatória antes de escreverem código a sério.</p>
+      <a href="https://go.dev/doc/effective_go">go.dev/doc/effective_go</a>
+    </div>
+    <div class="card">
+      <span class="cm">Livro · A bíblia</span>
+      <div class="ct">The Go Programming Language</div>
+      <span class="lvl">MÉDIO</span>
+      <p>Donovan &amp; Kernighan (sim, <em>esse</em> Kernighan). O capítulo 8 (Goroutines &amp; Channels) constrói um <b>servidor de chat concorrente</b> — quase um molde direto do servidor TAP. Vale ouro.</p>
+      <a href="https://www.gopl.io">gopl.io</a>
+    </div>
+    <div class="card">
+      <span class="cm">Blog oficial</span>
+      <div class="ct">Share Memory By Communicating</div>
+      <span class="lvl">MÉDIO</span>
+      <p>O artigo que explica a filosofia de concorrência de Go — exatamente o modelo Hub que recomendo na secção 03. Curto e essencial.</p>
+      <a href="https://go.dev/blog/codelab-share">go.dev/blog/codelab-share</a>
+    </div>
+  </div>
+
+  <h3>Fase 3 — Concorrência avançada (ao construir o servidor)</h3>
+  <div class="grid">
+    <div class="card">
+      <span class="cm">Talk · Rob Pike</span>
+      <div class="ct">Go Concurrency Patterns</div>
+      <span class="lvl">MÉDIO→AVANÇADO</span>
+      <p>A talk clássica do co-criador de Go. Padrões de goroutines/channels que vais usar diretamente no Hub e no broadcast. Procura no YouTube por "Rob Pike Go Concurrency Patterns".</p>
+      <a href="https://go.dev/talks/2012/concurrency.slide">go.dev/talks/2012/concurrency.slide</a>
+    </div>
+    <div class="card">
+      <span class="cm">Blog oficial</span>
+      <div class="ct">Pipelines and Cancellation</div>
+      <span class="lvl">AVANÇADO</span>
+      <p>Como cancelar goroutines de forma limpa com <code>context</code> — exatamente o que precisas para o shutdown gracioso (secção 06).</p>
+      <a href="https://go.dev/blog/pipelines">go.dev/blog/pipelines</a>
+    </div>
+    <div class="card">
+      <span class="cm">Vídeo · Curso grátis</span>
+      <div class="ct">freeCodeCamp — Go Full Course</div>
+      <span class="lvl">INICIANTE→MÉDIO</span>
+      <p>Curso longo e gratuito no YouTube se preferirem formato vídeo guiado. Bom para o Alexandre acompanhar a Tour com algo mais visual. Procura "freeCodeCamp Learn Go Programming".</p>
+      <a href="https://www.youtube.com/c/Freecodecamp">youtube.com/c/freecodecamp</a>
+    </div>
+  </div>
+
+  <h3>Fase 4 — Prática extra (opcional, consolidar)</h3>
+  <div class="grid">
+    <div class="card">
+      <span class="cm">Exercícios · Projeto</span>
+      <div class="ct">Gophercises</div>
+      <span class="lvl">MÉDIO</span>
+      <p>Mini-projetos guiados por Jon Calhoun para solidificar o que aprenderam. Bom para a fase de aquecimento antes de atacar o TAP.</p>
+      <a href="https://gophercises.com">gophercises.com</a>
+    </div>
+    <div class="card">
+      <span class="cm">Prática · Mentoria</span>
+      <div class="ct">Exercism — Go Track</div>
+      <span class="lvl">INICIANTE→MÉDIO</span>
+      <p>Exercícios com feedback da comunidade. Útil para apanhar idiomas que a Tour não cobre em profundidade.</p>
+      <a href="https://exercism.org/tracks/go">exercism.org/tracks/go</a>
+    </div>
+    <div class="card">
+      <span class="cm">Referência · Std lib</span>
+      <div class="ct">pkg.go.dev</div>
+      <span class="lvl">TODOS</span>
+      <p>Documentação oficial de todos os pacotes. Vais viver no <code>net</code>, <code>bufio</code>, <code>encoding/json</code>, <code>log/slog</code>, <code>context</code>, <code>sync</code>.</p>
+      <a href="https://pkg.go.dev/std">pkg.go.dev/std</a>
+    </div>
+  </div>
+
+  <div class="box info">
+    <div class="bt">Estratégia de estudo para o grupo</div>
+    Façam a <b>Fase 1 em paralelo nos primeiros 3–4 dias</b> (cada um na sua máquina). Depois leiam juntos o <b>capítulo 8 do livro Donovan &amp; Kernighan</b> — o servidor de chat dele é praticamente um esqueleto do servidor TAP, discutam-no linha a linha. Só depois disso comecem a escrever código do projeto. Investir ~1 semana a aprender bem poupa semanas de luta com bugs de concorrência.
+  </div>
+</section>
+
+<footer>
+  // RFC 42TAP · documento de teoria gerado para o projeto de grupo · Go edition<br>
+  Lê o segundo HTML para a divisão de trabalho e estrutura recomendada do repositório.
+</footer>
+
+</div>
+</body>
+</html>
