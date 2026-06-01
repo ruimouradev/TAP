@@ -14,6 +14,29 @@ go version
 
 - Se devolver algo tipo `go version go1.22.x linux/amd64` → segue para o passo 2.
 - Se devolver `command not found` → diz-me, sem Go nada disto avança.
+- Se devolver uma versão antiga, como `go1.18.1`, o problema costuma ser o `PATH` a apontar para o Go do sistema (`/usr/bin/go`) em vez do Go instalado na tua conta.
+- A correção que funcionou foi instalar o Go 1.22.5 em `~/.local/go` e pô-lo primeiro no `PATH`.
+- Estes foram os comandos que usei sem `sudo`:
+
+```bash
+# 1) Pick a version from https://go.dev/dl
+#    Example below uses go1.22.5; replace if needed.
+
+cd /tmp
+wget https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
+
+# 2) Install it under your home directory
+mkdir -p "$HOME/.local"
+tar -C "$HOME/.local" -xzf go1.22.5.linux-amd64.tar.gz
+
+# 3) Use this Go first in your shell
+export PATH="$HOME/.local/go/bin:$PATH"
+
+# 4) Check it worked
+go version
+```
+
+No nosso caso, isto fez o terminal passar de `/usr/bin/go` para `~/.local/go/bin/go`, e o `go mod tidy` deixou de reclamar da versão mínima.
 
 ## 2. Confirmar que há compilador C
 
@@ -60,6 +83,16 @@ Clica no botão → o texto muda. Se isto acontecer, o teste passou.
 ## Se falhar
 
 Antes de mais, vale a pena tentares diagnosticar tu sem esperar — a maior parte dos erros tem mais que uma solução, podes ir tentando.
+
+### Se aparecer erro de UTF-8 / go-gl corrompido
+
+Se o `go run .` falhar com algo do género `invalid UTF-8 encoding` dentro de `github.com/go-gl/gl`, o problema foi o cache de módulos do Go. A correção que resolveu foi limpar o cache e voltar a descarregar as dependências:
+
+```bash
+go clean -modcache
+go mod tidy
+go run .
+```
 
 ### Diagnóstico rápido (corre tudo, é só leitura)
 
