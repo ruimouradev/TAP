@@ -61,13 +61,21 @@ type QuestDef struct {
 // Load reads and parses the world data file at path.
 // Returns a *WorldFile ready to be validated, or an error.
 func Load(path string) (*WorldFile, error) {
-	_ = os.ReadFile
-	_ = fmt.Errorf
-	return nil, nil // TODO: implement
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read world file %q: %w", path, err)
+	}
+
+	return parseJSON(raw)
 }
 
 // parseJSON decodes raw JSON bytes into a WorldFile struct.
 func parseJSON(data []byte) (*WorldFile, error) {
-	_ = json.Unmarshal
-	return nil, nil // TODO: implement
+	var wf WorldFile
+	//    [Initialization Statement]   ; [Condition Check]
+	if err := json.Unmarshal(data, &wf); err != nil {
+		return nil, fmt.Errorf("parse world file JSON: %w", err)
+	}
+
+	return &wf, nil
 }
