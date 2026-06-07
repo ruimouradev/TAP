@@ -4,58 +4,58 @@
   "rooms": {
     "loc.village_square": {
       "name": "Village Square",
-      "description": "TODO",
+      "description": "A sunlit cobbled square at the heart of the village. A stone fountain bubbles in the centre and villagers gather around market stalls and notice boards.",
       "exits": { "north": "loc.bakery", "east": "loc.market", "south": "loc.gate", "west": "loc.inn" },
       "items": [],
       "npcs": ["npc.guard"]
     },
     "loc.bakery": {
       "name": "Village Bakery",
-      "description": "TODO",
+      "description": "A small bakery warm with the smell of yeast and baking. Shelves show loaves and pastries; a flour-dusted baker works behind the counter.",
       "exits": { "south": "loc.village_square" },
       "items": ["item.bread"],
       "npcs": ["npc.baker"]
     },
     "loc.market": {
       "name": "Market",
-      "description": "TODO",
+      "description": "A busy open market full of colourful stalls. Merchants sell produce, trinkets and herbs; the air is loud with haggling and laughter.",
       "exits": { "west": "loc.village_square", "north": "loc.forest_path" },
       "items": ["item.herbs"],
       "npcs": ["npc.merchant"]
     },
     "loc.inn": {
       "name": "The Sleeping Dragon Inn",
-      "description": "TODO",
+      "description": "The Sleeping Dragon Inn is a cosy two-storey building with a low-ceiling common room, wooden tables and a crackling hearth where travellers rest.",
       "exits": { "east": "loc.village_square" },
-      "items": [],
-      "npcs": []
+      "items": ["item.amulet","item.torn_letter"],
+      "npcs": ["npc.innkeeper","npc.bard"]
     },
     "loc.gate": {
       "name": "South Gate",
-      "description": "TODO",
+      "description": "A stout stone gate that guards the southern road. The guard post overlooks the path into the nearby woods and the countryside beyond.",
       "exits": { "north": "loc.village_square", "south": "loc.forest_entrance" },
       "items": [],
       "npcs": []
     },
     "loc.forest_entrance": {
       "name": "Forest Entrance",
-      "description": "TODO",
+      "description": "Where the village meets the trees: a narrow clearing with a worn trail heading into the forest. Birds call from the branches above.",
       "exits": { "north": "loc.gate", "east": "loc.forest_path", "south": "loc.deep_forest" },
       "items": [],
       "npcs": []
     },
     "loc.forest_path": {
       "name": "Forest Path",
-      "description": "TODO",
+      "description": "A dirt track winding beneath tall pines. The path is strewn with roots and leaves; it feels quieter here, and the village recedes behind you.",
       "exits": { "south": "loc.market", "west": "loc.forest_entrance" },
       "items": ["item.rusty_sword"],
       "npcs": ["npc.goblin"]
     },
     "loc.deep_forest": {
       "name": "Deep Forest",
-      "description": "TODO",
+      "description": "Deep in the forest the trees close in and light grows dim. Mossy stones and broken branches hint at long-forgotten ruins — danger lurks here.",
       "exits": { "north": "loc.forest_entrance" },
-      "items": [],
+      "items": ["item.ancient_relic"],
       "npcs": ["npc.goblin_chief"]
     }
   },
@@ -75,7 +75,19 @@
     },
     "item.ancient_relic": {
       "name": "Ancient Relic",
-      "takeable": false
+      "takeable": false,
+      "lore": "A heavy relic etched with weathered runes. It hums faintly when held near the old stones."
+    }
+    ,
+    "item.amulet": {
+      "name": "Silver Amulet",
+      "takeable": true,
+      "lore": "A simple silver amulet engraved with a tiny tree — a common keepsake in the village."
+    },
+    "item.torn_letter": {
+      "name": "Torn Letter",
+      "takeable": true,
+      "lore": "A fragment of a letter, the edges singed. A hastily scrawled name is still legible."
     }
   },
 
@@ -101,7 +113,23 @@
       "role": "merchant",
       "hp": 40,
       "hostile": false,
-      "dialogue": "Looking to trade?",
+      "dialogue": "Looking to trade? I have trinkets from distant towns and curios for the brave.",
+      "quest_id": ""
+    },
+    "npc.innkeeper": {
+      "name": "Innkeeper",
+      "role": "merchant",
+      "hp": 50,
+      "hostile": false,
+      "dialogue": "Welcome, weary traveller. Rooms, stew and stout — best in the county.",
+      "quest_id": ""
+    },
+    "npc.bard": {
+      "name": "Bard",
+      "role": "entertainer",
+      "hp": 30,
+      "hostile": false,
+      "dialogue": "A song for a coin! I know tales of the old road and the ruins beyond; listen close and I might tell you.",
       "quest_id": ""
     },
     "npc.goblin": {
@@ -117,20 +145,20 @@
       "role": "enemy",
       "hp": 80,
       "hostile": true,
-      "dialogue": "You dare enter my forest?",
+      "dialogue": "You dare enter my forest? I will crush you! Bring me your bones and I will grow stronger.",
       "quest_id": "quest.defeat_goblin_chief"
     }
   },
 
   "quests": {
     "quest.fetch_herbs": {
-      "description": "Bring 1 Healing Herbs to the Baker.",
+      "description": "The Baker asks you to bring a bundle of Healing Herbs from the market so she can bake a special remedy for an ill child.",
       "type": "fetch",
       "target": "item.herbs",
       "reward": "item.bread"
     },
     "quest.defeat_goblin_chief": {
-      "description": "Defeat the Goblin Chief in the Deep Forest.",
+      "description": "The village fears the Goblin Chief, whose raids have left tracks and stolen supplies. Defeat him and secure the Deep Forest.",
       "type": "defeat",
       "target": "npc.goblin_chief",
       "reward": "item.rusty_sword"
