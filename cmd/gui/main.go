@@ -22,36 +22,93 @@ and input wiring.
 package main
 
 import (
+	"bufio"
+	"fmt"
+	"log"
 	"net"
+	"os"
+	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+
+	"the-answer-protocol/internal/protocol"
 )
 
 // main creates the Fyne app, opens the connection to the server, wires
 // the read goroutine to the UI, and starts the event loop.
 func main() {
-	// TODO: implement
-	// Suggested flow:
-	//   1. parse server addr from os.Args (default "localhost:4242")
-	//   2. net.Dial("tcp", addr)
-	//   3. a := app.New(); w := a.NewWindow("TAP")
-	//   4. build the main layout (see build* helpers below)
-	//   5. go readLoop(conn, eventsCh)
-	//   6. wire eventsCh → UI updates via fyne.Do(...) / widget.Refresh()
-	//   7. w.ShowAndRun()
+//   1. parse server addr from os.Args (default "localhost:4242")
+	addr := parseServerAddr(os.Args)
+
+//   2. Create app and Window("TAP")
+	a := app.New()
+	w := a.NewWindow("TAP")
+
+//   3. Build the UI with a “connecting” state or status label (see build* helpers below)
+	eventsCh := make(chan string)
+
+//   4. Dial the server, with clean error handling.
+	conn, err := net.Dial("tcp", addr)
+
+//   5. If connection succeeds, start readLoop.
+	if err != nil {
+		log.Printf("failed to connect to %s: %v", addr, err)
+	} else {
+
+//   6. wire eventsCh → UI updates via fyne.Do(...) / widget.Refresh()
+		go readLoop(conn, eventsCh)
+	}
+
+	w.ShowAndRun()
+}
+
+func parseServerAddr(args []string) string {
+	if len(args) > 1 && args[1] != "" {
+		return args[1]
+	}
+	return "localhost:4242"
 }
 
 // readLoop reads lines from the server and pushes them into the events
 // channel for the UI goroutine to consume. Runs in its own goroutine;
 // closes events when the connection ends.
 func readLoop(conn net.Conn, events chan<- string) {
-	// TODO: implement — bufio.Scanner over conn, send each line to events
+	defer close(events)
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	// allow reasonably large lines (increase buffer to 256KB)
+	const maxTokenSize = 256 * 1024
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxTokenSize)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		// send line to events channel; block if UI is slow
+		events <- line
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("readLoop: scanner error: %v", err)
+	}
 }
 
 // sendCommand formats a verb + args via internal/protocol and writes it
 // to the connection. Called from button click handlers and the chat input.
 func sendCommand(conn net.Conn, verb string, args ...string) error {
-	return nil // TODO: implement
+	if conn == nil {
+		return fmt.Errorf("no connection")
+	}
+
+	// Ensure verb is uppercase as per protocol design
+	cmd := protocol.Command{Verb: strings.ToUpper(verb), Args: args}
+	line := cmd.String() + "\n"
+	_, err := conn.Write([]byte(line))
+	if err != nil {
+		return fmt.Errorf("sendCommand write: %w", err)
+	}
+	return nil
 }
 
 // buildRoomPanel returns the widget that shows the current room's name,
