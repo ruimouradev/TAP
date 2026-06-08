@@ -1,9 +1,4 @@
-/*
-Package protocol — Owner: BOTH (Rui + Alexandre).
-
-File errors.go: all error code and message constants from RFC 42TAP.
-Use these constants everywhere instead of magic numbers.
-*/
+// errors.go: RFC 42TAP error codes and messages.
 package protocol
 
 // Error codes defined by RFC 42TAP section 8.2.
