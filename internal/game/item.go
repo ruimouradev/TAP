@@ -1,15 +1,11 @@
-/*
-Package game — Owner: Rui.
-
-File item.go: Item type and TAKE/DROP logic.
-Items are unique instances — they are never duplicated.
-TAKE removes the item from the room floor; DROP returns it to the room.
-Items can be matched by canonical ID ("item.healing_potion") or by
-display name ("Healing Potion"), case-insensitively, with multi-word support.
-*/
+// item.go: the Item type and TAKE/DROP logic. Items are unique instances,
+// matched by ID or by display name (case-insensitive, multi-word supported).
 package game
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Item is a unique instance of a game resource.
 type Item struct {
@@ -17,26 +13,42 @@ type Item struct {
 	Name string // display name, e.g. "Healing Potion"
 }
 
-// ErrItemNotFound is returned when an item cannot be located in a room.
-var ErrItemNotFound = errors.New("item not found")
+var (
+	ErrItemNotFound       = errors.New("item not found")
+	ErrItemNotInInventory = errors.New("item not in inventory")
+)
 
-// ErrItemNotInInventory is returned when a player tries to drop an item they don't have.
-var ErrItemNotInInventory = errors.New("item not in inventory")
-
-// TakeItem removes the named item from room and adds it to the player's inventory.
-// identifier can be the item's ID or its name (case-insensitive, multi-word).
-func TakeItem(room *Room, player *Player, identifier string) (*Item, error) {
-	return nil, nil // TODO: implement
-}
-
-// DropItem removes the named item from the player's inventory and places it in room.
-// identifier can be the item's ID or its name (case-insensitive, multi-word).
-func DropItem(player *Player, room *Room, identifier string) (*Item, error) {
-	return nil, nil // TODO: implement
-}
-
-// FindItem searches an items map for an item matching identifier.
-// Matches by ID first, then by name (case-insensitive, supports multi-word names).
+// FindItem matches an item by ID first, then by display name (case-insensitive).
 func FindItem(items map[string]*Item, identifier string) (*Item, bool) {
-	return nil, false // TODO: implement
+	if it, ok := items[identifier]; ok {
+		return it, true
+	}
+	for _, it := range items {
+		if strings.EqualFold(it.Name, identifier) {
+			return it, true
+		}
+	}
+	return nil, false
+}
+
+// TakeItem moves an item from the room floor into the player's inventory.
+func TakeItem(room *Room, player *Player, identifier string) (*Item, error) {
+	it, ok := FindItem(room.Items, identifier)
+	if !ok {
+		return nil, ErrItemNotFound
+	}
+	delete(room.Items, it.ID)
+	player.Inventory[it.ID] = it
+	return it, nil
+}
+
+// DropItem moves an item from the player's inventory back to the room floor.
+func DropItem(player *Player, room *Room, identifier string) (*Item, error) {
+	it, ok := FindItem(player.Inventory, identifier)
+	if !ok {
+		return nil, ErrItemNotInInventory
+	}
+	delete(player.Inventory, it.ID)
+	room.Items[it.ID] = it
+	return it, nil
 }
