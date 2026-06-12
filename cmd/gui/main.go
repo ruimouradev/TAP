@@ -31,6 +31,9 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/widget"
 
 	"the-answer-protocol/internal/protocol"
 )
@@ -45,7 +48,7 @@ func main() {
 	a := app.New()
 	w := a.NewWindow("TAP")
 
-//   3. Build the UI with a “connecting” state or status label (see build* helpers below)
+//   3. Channel to communicate between readLoop (Network thread) and the UI
 	eventsCh := make(chan string)
 
 //   4. Dial the server, with clean error handling.
@@ -56,10 +59,14 @@ func main() {
 		log.Printf("failed to connect to %s: %v", addr, err)
 	} else {
 
-//   6. wire eventsCh → UI updates via fyne.Do(...) / widget.Refresh()
+//   6. goroutine in background to listen to the server thru conn and wire 
+// 		eventsCh → UI updates
 		go readLoop(conn, eventsCh)
 	}
 
+//  container.NewBorder(top, bottom, left, right, center)
+	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, widget.NewLabel("GUI shell ready")))
+//  Shows the window and starts the Main UI Event Loop
 	w.ShowAndRun()
 }
 
@@ -133,14 +140,36 @@ func buildInventoryPanel() fyne.CanvasObject {
 // buildActionBar returns the row of buttons that map 1:1 to protocol
 // verbs (LOOK, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS).
 // Each button calls sendCommand with the appropriate verb.
-func buildActionBar() fyne.CanvasObject {
-	return nil // TODO: implement
+func buildActionBar(conn net.Conn) fyne.CanvasObject {
+	return container.NewHBox(
+		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }),
+		widget.NewButton("MOVE", func() { logCommand(sendCommand(conn, "MOVE", "north")) }),
+		widget.NewButton("TAKE", func() { logCommand(sendCommand(conn, "TAKE", "item")) }),
+		widget.NewButton("DROP", func() { logCommand(sendCommand(conn, "DROP", "item")) }),
+		widget.NewButton("TALK", func() { logCommand(sendCommand(conn, "TALK", "npc")) }),
+		widget.NewButton("ATTACK", func() { logCommand(sendCommand(conn, "ATTACK", "npc")) }),
+		widget.NewButton("STATUS", func() { logCommand(sendCommand(conn, "STATUS")) }),
+		widget.NewButton("QUEST", func() { logCommand(sendCommand(conn, "QUEST")) }),
+		widget.NewButton("QUESTS", func() { logCommand(sendCommand(conn, "QUESTS")) }),
+	)
 }
 
 // buildStatusBar returns the top/bottom bar with HP, players in room,
 // and players on server. Refreshed on STATUS responses and EVT STATS.
 func buildStatusBar() fyne.CanvasObject {
-	return nil // TODO: implement
+	return container.NewHBox(
+		widget.NewLabel("HP: --"),
+		layout.NewSpacer(),
+		widget.NewLabel("Room: --"),
+		layout.NewSpacer(),
+		widget.NewLabel("Server: --"),
+	)
+}
+
+func logCommand(err error) {
+	if err != nil {
+		log.Printf("send command failed: %v", err)
+	}
 }
 
 // applyResponse routes an OK / ERR response line to the right panel.
