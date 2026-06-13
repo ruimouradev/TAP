@@ -1,160 +1,151 @@
-/*
-Package server — Owner: Rui.
-
-File dispatch.go: TAP command router.
-Maintains a map of verb → HandlerFunc and routes each incoming Command
-to the correct handler. All handlers run inside the Hub's goroutine,
-so they can read/mutate hub.world directly without any locks.
-*/
+// dispatch.go: the command router. Maps each verb to a handler; handlers run
+// inside the Hub goroutine, so they touch h.world directly without locks.
+// Only the vertical-slice verbs are wired here; the rest come in Bloco 4.
 package server
 
-import "the-answer-protocol/internal/protocol"
+import (
+	"strings"
 
-// HandlerFunc is the signature for all command handlers.
-// Runs inside the Hub's goroutine — safe to access hub.world directly.
-// Returns the response string to write back to the client.
+	"the-answer-protocol/internal/game"
+	"the-answer-protocol/internal/protocol"
+)
+
+// HandlerFunc is the signature for every command handler. Returns the response
+// line to send back (empty string = send nothing).
 type HandlerFunc func(h *Hub, c *Client, args []string) string
 
-// dispatch routes cmd to the registered handler and writes the response to c.
-// Responds with ERR for unknown verbs.
+// errBadRequest covers input the RFC doesn't define (unknown verb, not
+// connected, missing args). Documented in the README as our extension.
+const errBadRequest = 400
+
+// dispatch routes cmd to its handler and sends the response to c.
 func (h *Hub) dispatch(c *Client, cmd protocol.Command) {
-	// TODO: implement — build the handlers map and look up cmd.Verb
+	handlers := map[string]HandlerFunc{
+		"CONNECT": handleConnect,
+		"LOOK":    handleLook,
+		"MOVE":    handleMove,
+		"CHAT":    handleChat,
+		"WHO":     handleWho,
+		"QUIT":    handleQuit,
+	}
+	handler, ok := handlers[cmd.Verb]
+	if !ok {
+		c.safeSend(protocol.Errf(errBadRequest, "UNKNOWN_COMMAND"))
+		return
+	}
+	if resp := handler(h, c, cmd.Args); resp != "" {
+		c.safeSend(resp)
+	}
 }
 
-// ── Connection ────────────────────────────────────────────────────────────────
-
-// handleConnect handles: CONNECT <username>
-// Registers the player in the world; validates username uniqueness.
-// Sends the initial greeting and broadcasts PRESENCE ENTER to the start room.
+// handleConnect: CONNECT <username>
 func handleConnect(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+	if c.username != "" {
+		return protocol.Errf(errBadRequest, "ALREADY_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_USERNAME")
+	}
+	name := args[0]
+	if _, err := h.world.AddPlayer(name); err != nil {
+		return protocol.Errf(protocol.ErrCodeNameInUse, protocol.MsgNameInUse)
+	}
+	c.username = name
+	p := h.world.GetPlayer(name)
+	h.broadcast(p.CurrentRoom, protocol.RoomPresenceEnter(name), c)
+	h.updatePlayerCount()
+	return protocol.OK("connected")
 }
 
-// handleQuit handles: QUIT
-// Removes the player gracefully and closes the connection.
+// handleQuit: QUIT — the client closes the connection on "OK bye"; the server's
+// readPump then sees the close and unregisters. (Server-side close is Bloco 5.)
 func handleQuit(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+	return protocol.OK("bye")
 }
 
-// ── World exploration ─────────────────────────────────────────────────────────
-
-// handleLook handles: LOOK
-// Returns the current room state (room info, players, items, NPCs) as JSON.
+// handleLook: LOOK — current room state as JSON.
 func handleLook(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	p := h.world.GetPlayer(c.username)
+	return protocol.OKJson(buildLook(h, h.world.GetRoom(p.CurrentRoom)))
 }
 
-// handleMove handles: MOVE <direction>
-// Moves the player, broadcasts PRESENCE LEAVE to the old room and
-// PRESENCE ENTER to the new room, returns "OK room=<new-room-id>".
+// handleMove: MOVE <direction>
 func handleMove(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(protocol.ErrCodeNoExit, protocol.MsgNoExit)
+	}
+	p := h.world.GetPlayer(c.username)
+	from := p.CurrentRoom
+	dest, err := h.world.MovePlayer(p, args[0])
+	if err != nil {
+		return protocol.Errf(protocol.ErrCodeNoExit, protocol.MsgNoExit)
+	}
+	h.broadcast(from, protocol.RoomPresenceLeave(c.username), c)
+	h.broadcast(dest.ID, protocol.RoomPresenceEnter(c.username), c)
+	return protocol.OKf("room=%s", dest.ID)
 }
 
-// handleWho handles: WHO
-// Returns players in current room AND total server count as JSON.
-// Subject example: OK {"room":["alice","bob"],"server":5}
-// Note: this deviates from the RFC ("OK players=<count>") — documented in README.
+// handleWho: WHO — players in this room + total online, as JSON.
 func handleWho(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	p := h.world.GetPlayer(c.username)
+	return protocol.OKJson(protocol.WhoResponse{
+		Room:   h.world.PlayersInRoom(p.CurrentRoom),
+		Server: h.world.TotalPlayers(),
+	})
 }
 
-// ── Communication ─────────────────────────────────────────────────────────────
-
-// handleChat handles: CHAT <scope> <message>
-// scope is GLOBAL, ROOM, or GROUP.
-// Broadcasts the appropriate EVT to the correct audience.
+// handleChat: CHAT <GLOBAL|ROOM|GROUP> <message>
 func handleChat(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 2 {
+		return protocol.Errf(errBadRequest, "BAD_CHAT")
+	}
+	scope := strings.ToUpper(args[0])
+	msg := strings.Join(args[1:], " ")
+	switch scope {
+	case "GLOBAL":
+		h.broadcastAll(protocol.GlobalChat(c.username, msg))
+	case "ROOM":
+		p := h.world.GetPlayer(c.username)
+		h.broadcast(p.CurrentRoom, protocol.RoomChat(c.username, msg), nil)
+	case "GROUP":
+		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup) // Bloco 4
+	default:
+		return protocol.Errf(errBadRequest, "BAD_SCOPE")
+	}
+	return protocol.OK("")
 }
 
-// ── Group management ──────────────────────────────────────────────────────────
-
-// handleGroup handles: GROUP CREATE | INVITE <user> | JOIN <leader> | LEAVE
-// Routes to the specific sub-command handler.
-func handleGroup(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// handleGroupCreate handles: GROUP CREATE
-// Creates a new group with the current player as leader.
-func handleGroupCreate(h *Hub, c *Client) string {
-	return "" // TODO: implement
-}
-
-// handleGroupInvite handles: GROUP INVITE <username>
-// Sends EVT GROUP INVITE to the target player.
-func handleGroupInvite(h *Hub, c *Client, target string) string {
-	return "" // TODO: implement
-}
-
-// handleGroupJoin handles: GROUP JOIN <leader-name>
-// Adds the player to an existing group and broadcasts EVT GROUP JOIN.
-func handleGroupJoin(h *Hub, c *Client, leaderName string) string {
-	return "" // TODO: implement
-}
-
-// handleGroupLeave handles: GROUP LEAVE
-// Removes the player from their group and broadcasts EVT GROUP LEAVE.
-func handleGroupLeave(h *Hub, c *Client) string {
-	return "" // TODO: implement
-}
-
-// ── Items ─────────────────────────────────────────────────────────────────────
-
-// handleTake handles: TAKE <item-identifier>
-// Removes the item from the room and adds it to the player's inventory.
-func handleTake(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// handleDrop handles: DROP <item-identifier>
-// Removes the item from the player's inventory and places it in the room.
-func handleDrop(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// handleInventory handles: INVENTORY
-// Returns the player's current items as a JSON array.
-func handleInventory(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// ── NPCs ──────────────────────────────────────────────────────────────────────
-
-// handleTalk handles: TALK <npc-name>
-// Returns NPC interaction as JSON.
-// Subject example: OK {"npc":"guard","dialogue":"Stay safe, traveler."}
-// Note: subject examples show JSON format; RFC shows plain string — we follow the subject.
-func handleTalk(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// ── Combat ────────────────────────────────────────────────────────────────────
-
-// handleAttack handles: ATTACK <npc-name>
-// Executes one round of combat and returns the result as JSON.
-// Broadcasts combat events to room players.
-func handleAttack(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// handleStatus handles: STATUS
-// Returns the player's current HP and combat status as JSON.
-func handleStatus(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// ── Quests ────────────────────────────────────────────────────────────────────
-
-// handleQuest handles: QUEST <npc-name>
-// Returns quest information from the NPC if a quest is available for this player.
-func handleQuest(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
-}
-
-// handleQuests handles: QUESTS
-// Returns a JSON list of all the player's active and completed quests.
-func handleQuests(h *Hub, c *Client, args []string) string {
-	return "" // TODO: implement
+// buildLook converts a room into the LOOK JSON payload.
+func buildLook(h *Hub, room *game.Room) protocol.LookResponse {
+	items := make([]protocol.LookItem, 0, len(room.Items))
+	for _, it := range room.Items {
+		items = append(items, protocol.LookItem{ID: it.ID, Name: it.Name})
+	}
+	npcs := make([]protocol.LookNPC, 0, len(room.NPCs))
+	for _, n := range room.NPCs {
+		npcs = append(npcs, protocol.LookNPC{ID: n.ID, Name: n.Name, Hostile: n.Hostile})
+	}
+	return protocol.LookResponse{
+		Room: protocol.LookRoom{
+			ID:          room.ID,
+			Name:        room.Name,
+			Description: room.Description,
+			Exits:       room.Exits,
+		},
+		Players: h.world.PlayersInRoom(room.ID),
+		Items:   items,
+		NPCs:    npcs,
+	}
 }
