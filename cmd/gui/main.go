@@ -125,6 +125,10 @@ var (
 	roomItemsValue       *widget.Label
 	roomNPCsValue        *widget.Label
 	roomPlayersValue     *widget.Label
+	chatGlobalLog        *widget.Entry
+	chatRoomLog          *widget.Entry
+	chatGroupLog         *widget.Entry
+	chatInput            *widget.Entry
 )
 
 // buildRoomPanel returns the widget that shows the current room's name,
@@ -171,7 +175,38 @@ func buildRoomPanel() fyne.CanvasObject {
 // buildChatPanel returns the three-tab chat (GLOBAL / ROOM / GROUP)
 // plus the input field that builds the right CHAT command.
 func buildChatPanel() fyne.CanvasObject {
-	return nil // TODO: implement
+	chatGlobalLog = widget.NewMultiLineEntry()
+	chatGlobalLog.SetText("Global chat will appear here...")
+	chatGlobalLog.Disable()
+	chatGlobalLog.Wrapping = fyne.TextWrapWord
+
+	chatRoomLog = widget.NewMultiLineEntry()
+	chatRoomLog.SetText("Room chat will appear here...")
+	chatRoomLog.Disable()
+	chatRoomLog.Wrapping = fyne.TextWrapWord
+
+	chatGroupLog = widget.NewMultiLineEntry()
+	chatGroupLog.SetText("Group chat will appear here...")
+	chatGroupLog.Disable()
+	chatGroupLog.Wrapping = fyne.TextWrapWord
+
+	chatInput = widget.NewEntry()
+	chatInput.SetPlaceHolder("Type a chat message...")
+
+	inputRow := container.NewBorder(nil, nil, nil,
+		widget.NewButton("SEND", func() {
+			log.Printf("chat send not wired yet: %q", chatInput.Text)
+		}),
+		chatInput,
+	)
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("GLOBAL", chatGlobalLog),
+		container.NewTabItem("ROOM", chatRoomLog),
+		container.NewTabItem("GROUP", chatGroupLog),
+	)
+
+	return widget.NewCard("Chat", "Global / room / group chat", container.NewVBox(tabs, inputRow))
 }
 
 // buildInventoryPanel returns the inventory list + a DROP button bound
