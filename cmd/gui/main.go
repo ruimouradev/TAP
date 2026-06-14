@@ -65,7 +65,14 @@ func main() {
 	}
 
 	//  container.NewBorder(top, bottom, left, right, center)
-	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, buildRoomPanel()))
+	mainCenter := container.NewGridWithColumns(2,
+		buildRoomPanel(),
+		container.NewVBox(
+			buildChatPanel(),
+			buildInventoryPanel(),
+		),
+	)
+	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, mainCenter))
 //  Shows the window and starts the Main UI Event Loop
 	w.ShowAndRun()
 }
@@ -129,6 +136,8 @@ var (
 	chatRoomLog          *widget.Entry
 	chatGroupLog         *widget.Entry
 	chatInput            *widget.Entry
+	inventoryItems       *widget.List
+	inventorySelected    *widget.Label
 )
 
 // buildRoomPanel returns the widget that shows the current room's name,
@@ -212,7 +221,36 @@ func buildChatPanel() fyne.CanvasObject {
 // buildInventoryPanel returns the inventory list + a DROP button bound
 // to the currently selected item.
 func buildInventoryPanel() fyne.CanvasObject {
-	return nil // TODO: implement
+	items := []string{"Waiting for INVENTORY..."}
+	inventorySelected = widget.NewLabel("Selected item: --")
+	inventorySelected.Wrapping = fyne.TextWrapWord
+
+	inventoryItems = widget.NewList(
+		func() int { return len(items) },
+		func() fyne.CanvasObject { return widget.NewLabel("item") },
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(items[i])
+		},
+	)
+
+	inventoryItems.OnSelected = func(id widget.ListItemID) {
+		if id >= 0 && id < len(items) {
+			inventorySelected.SetText(fmt.Sprintf("Selected item: %s", items[id]))
+		}
+	}
+
+	dropButton := widget.NewButton("DROP", func() {
+		log.Printf("inventory drop not wired yet")
+	})
+
+	content := container.NewVBox(
+		widget.NewLabelWithStyle("Inventory", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		inventorySelected,
+		inventoryItems,
+		dropButton,
+	)
+
+	return widget.NewCard("Inventory", "Your carried items", content)
 }
 
 // buildActionBar returns the row of buttons that map 1:1 to protocol
