@@ -64,8 +64,8 @@ func main() {
 		go readLoop(conn, eventsCh)
 	}
 
-//  container.NewBorder(top, bottom, left, right, center)
-	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, widget.NewLabel("GUI shell ready")))
+	//  container.NewBorder(top, bottom, left, right, center)
+	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, buildRoomPanel()))
 //  Shows the window and starts the Main UI Event Loop
 	w.ShowAndRun()
 }
@@ -118,11 +118,54 @@ func sendCommand(conn net.Conn, verb string, args ...string) error {
 	return nil
 }
 
+var (
+	roomNameValue        *widget.Label
+	roomDescriptionValue *widget.Label
+	roomExitsValue       *widget.Label
+	roomItemsValue       *widget.Label
+	roomNPCsValue        *widget.Label
+	roomPlayersValue     *widget.Label
+)
+
 // buildRoomPanel returns the widget that shows the current room's name,
 // description, exits, items, NPCs, and players-in-room. Refreshed on
 // every EVT ROOM PRESENCE * and every LOOK response.
 func buildRoomPanel() fyne.CanvasObject {
-	return nil // TODO: implement
+	roomNameValue = widget.NewLabel("--")
+	roomNameValue.Wrapping = fyne.TextWrapWord
+
+	roomDescriptionValue = widget.NewLabel("Waiting for LOOK...")
+	roomDescriptionValue.Wrapping = fyne.TextWrapWord
+
+	roomExitsValue = widget.NewLabel("--")
+	roomExitsValue.Wrapping = fyne.TextWrapWord
+
+	roomItemsValue = widget.NewLabel("--")
+	roomItemsValue.Wrapping = fyne.TextWrapWord
+
+	roomNPCsValue = widget.NewLabel("--")
+	roomNPCsValue.Wrapping = fyne.TextWrapWord
+
+	roomPlayersValue = widget.NewLabel("--")
+	roomPlayersValue.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVBox(
+		widget.NewLabelWithStyle("Room", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle("Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		roomNameValue,
+		widget.NewLabelWithStyle("Description", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		roomDescriptionValue,
+		widget.NewLabelWithStyle("Exits", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		roomExitsValue,
+		widget.NewLabelWithStyle("Items", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		roomItemsValue,
+		widget.NewLabelWithStyle("NPCs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		roomNPCsValue,
+		widget.NewLabelWithStyle("Players in room", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		roomPlayersValue,
+	)
+
+	return widget.NewCard("Room", "Current room state", content)
 }
 
 // buildChatPanel returns the three-tab chat (GLOBAL / ROOM / GROUP)
