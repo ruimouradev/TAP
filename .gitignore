@@ -5,3 +5,4 @@ bin/
 *.out
 coverage.out
 .DS_Store
+docs/estudo/
