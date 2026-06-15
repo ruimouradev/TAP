@@ -65,7 +65,8 @@ func main() {
 		go readLoop(conn, eventsCh)
 	}
 
-	//  container.NewBorder(top, bottom, left, right, center)
+	// Devides the window in 2 columns and creates a vertical window for the right
+	// column, that is split in two panels one on top of the other
 	mainCenter := container.NewGridWithColumns(2,
 		buildRoomPanel(),
 		container.NewVBox(
@@ -73,6 +74,7 @@ func main() {
 			buildInventoryPanel(),
 		),
 	)
+	//  container.NewBorder(top, bottom, left, right, center)
 	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, mainCenter))
 	//  Shows the window and starts the Main UI Event Loop
 	w.ShowAndRun()
@@ -89,15 +91,23 @@ func parseServerAddr(args []string) string {
 // channel for the UI goroutine to consume. Runs in its own goroutine;
 // closes events when the connection ends.
 func readLoop(conn net.Conn, events chan<- string) {
+	// defered execution LIFO stack
 	defer close(events)
 	defer conn.Close()
 
+	// reads bytes together until it hits a newline character (\n)
 	scanner := bufio.NewScanner(conn)
 	// allow reasonably large lines (increase buffer to 256KB)
+	// By default, Go's text scanner will crash above 64KB
 	const maxTokenSize = 256 * 1024
+	// Creates an initial memory allocation slice capable of holding
+	//  up to $64KB of text
 	buf := make([]byte, 0, 64*1024)
+	// Applies this customized memory sizing to the scanner configuration
+	// overriding Go's default 64KB limit
 	scanner.Buffer(buf, maxTokenSize)
 
+	// Infinite Listening Loop
 	for scanner.Scan() {
 		line := scanner.Text()
 		// send line to events channel; block if UI is slow
@@ -116,9 +126,15 @@ func sendCommand(conn net.Conn, verb string, args ...string) error {
 		return fmt.Errorf("no connection")
 	}
 
-	// Ensure verb is uppercase as per protocol design
+	// Initializes a new struct object. Ensure verb is uppercase as per
+	//  protocol design
 	cmd := protocol.Command{Verb: strings.ToUpper(verb), Args: args}
+	// Calls String method. Takes the verb and the arguments array and stitch
+	// them together into a string + "/n"
 	line := cmd.String() + "\n"
+	// transmits raw data down the network wire to the server.
+	// []byte(line): converts (casts) text line into a slice of raw bytes.
+	// returns the number of bytes successfully written, and an error object
 	_, err := conn.Write([]byte(line))
 	if err != nil {
 		return fmt.Errorf("sendCommand write: %w", err)
@@ -145,7 +161,10 @@ var (
 // description, exits, items, NPCs, and players-in-room. Refreshed on
 // every EVT ROOM PRESENCE * and every LOOK response.
 func buildRoomPanel() fyne.CanvasObject {
+	// Instantiates a label widget displaying generic placeholder text until
+	//  the server synchronizes the live data
 	roomNameValue = widget.NewLabel("--")
+	// Wraps words into multiple lines when they hit the boundary of the panel container.
 	roomNameValue.Wrapping = fyne.TextWrapWord
 
 	roomDescriptionValue = widget.NewLabel("Waiting for LOOK...")
@@ -179,6 +198,8 @@ func buildRoomPanel() fyne.CanvasObject {
 		roomPlayersValue,
 	)
 
+	// wraps content container inside a widget.NewCard with a border boundary around the
+	// panel, global title ("Room") and helper subtitle ("Current room state") at the top.
 	return widget.NewCard("Room", "Current room state", content)
 }
 
