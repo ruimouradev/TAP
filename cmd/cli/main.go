@@ -1,38 +1,55 @@
-/*
-cmd/cli — Owner: Rui.
-
-TAP command-line client.
-Connects to the server over TCP and lets the user send commands and
-receive events in real time using two concurrent goroutines:
-  - readLoop: reads from the server and prints to stdout
-  - writeLoop: reads from stdin and sends to the server
-
-The user may type raw RFC commands ("MOVE north", "CHAT GLOBAL hello")
-or a friendlier format translated by the CLI — document the choice in the README.
-*/
+// cmd/cli: the TAP command-line client. Sends raw RFC commands typed by the
+// user and prints everything the server sends, in real time. Two goroutines:
+// readLoop (socket → stdout) and writeLoop (stdin → socket).
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
-// main connects to the TAP server and starts the interactive CLI session.
 func main() {
-	// TODO: implement
-	// Suggested: addr := os.Args[1]  (e.g. "localhost:4242")
-	_ = os.Args
-	_ = net.Dial
+	addr := "localhost:4242"
+	if len(os.Args) >= 2 {
+		addr = os.Args[1]
+	}
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "cannot connect:", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	done := make(chan struct{})
+	go readLoop(conn, done)
+	writeLoop(conn, done)
 }
 
-// readLoop reads event/response lines from the server and prints them to stdout.
-// Runs in its own goroutine; closes done when the server closes the connection.
+// readLoop prints server lines until the connection closes.
 func readLoop(conn net.Conn, done chan<- struct{}) {
-	// TODO: implement
+	sc := bufio.NewScanner(conn)
+	for sc.Scan() {
+		fmt.Println(sc.Text())
+	}
+	close(done)
 }
 
-// writeLoop reads lines from stdin and sends them to the server.
-// Returns when stdin is closed or done is signalled by readLoop.
+// writeLoop sends stdin lines to the server, ending on QUIT or server close.
 func writeLoop(conn net.Conn, done <-chan struct{}) {
-	// TODO: implement
+	sc := bufio.NewScanner(os.Stdin)
+	for sc.Scan() {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		line := sc.Text()
+		fmt.Fprintf(conn, "%s\n", line)
+		if strings.EqualFold(strings.TrimSpace(line), "QUIT") {
+			return // closes the connection (defer in main)
+		}
+	}
 }

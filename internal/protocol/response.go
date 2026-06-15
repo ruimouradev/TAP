@@ -1,14 +1,4 @@
-/*
-Package protocol — Owner: BOTH (Rui + Alexandre).
-
-File response.go: helper functions for formatting OK and ERR responses
-that the server sends back to a client after processing a command.
-
-Wire formats:
-
-	OK [data]\n
-	ERR <code> <message>\n
-*/
+// response.go: OK/ERR formatting and the shared response structs.
 package protocol
 
 import (
@@ -25,8 +15,7 @@ func OK(data string) string {
 	return "OK " + data + "\n"
 }
 
-// OKf formats a success response using fmt.Sprintf-style formatting.
-// Útil para respostas de texto simples como OKf("room=%s", roomID).
+// OKf is OK with fmt.Sprintf-style formatting.
 func OKf(format string, args ...any) string {
 	return OK(fmt.Sprintf(format, args...))
 }
@@ -34,10 +23,6 @@ func OKf(format string, args ...any) string {
 // OKJson marshals v to JSON and wraps it in an OK response line.
 // Returns an ERR response line if marshalling fails.
 func OKJson(v any) string {
-	// json.Marshal só falha com tipos impossíveis de serializar (canais,
-	// funções). Os nossos structs de resposta nunca têm esses campos, por isso
-	// na prática este erro não acontece — mas tratamo-lo na mesma, em vez de
-	// ignorar com "_", para o servidor nunca enviar uma linha meia-feita.
 	b, err := json.Marshal(v)
 	if err != nil {
 		return Errf(ErrCodeSendFailed, MsgSendFailed)
@@ -47,9 +32,7 @@ func OKJson(v any) string {
 
 // Errf formats an error response: "ERR <code> <message>\n".
 func Errf(code int, msg string) string {
-	// O ABNF do RFC define error-code = 3DIGIT. Os nossos códigos já têm 3
-	// dígitos (201..901), mas %03d garante o formato mesmo que algum dia surja
-	// um código mais pequeno — fica sempre conforme o ABNF.
+	// %03d: error codes are always 3 digits (RFC ABNF)
 	return fmt.Sprintf("ERR %03d %s\n", code, msg)
 }
 

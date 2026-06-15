@@ -1,19 +1,10 @@
-/*
-cmd/server — Owner: Rui.
-
-Entry point for the TAP TCP server.
-Responsibilities:
-  - Read the world.json path from os.Args[1]
-  - Load and validate the world via worldfile.Load + worldfile.Validate
-  - Create the Hub (the single actor that owns all game state)
-  - Start the TCP listener on port 4242
-  - Accept connections in a loop, spawning one goroutine per client
-  - Handle graceful shutdown via signal.NotifyContext (Ctrl+C)
-*/
+// cmd/server: entry point for the TAP TCP server. Loads and validates the
+// world, creates the Hub, and accepts connections until Ctrl+C.
 package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -24,20 +15,60 @@ import (
 	"the-answer-protocol/internal/worldfile"
 )
 
-// main loads the world, creates the Hub, and starts the TCP listener.
+const listenAddr = ":4242"
+
 func main() {
-	// TODO: implement
-	_ = context.Background()
-	_ = slog.Default()
-	_ = os.Args
-	_ = game.NewWorld
-	_ = server.NewHub
-	_ = worldfile.Load
-	_ = signal.NotifyContext
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: server <world.json>")
+		os.Exit(1)
+	}
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	wf, err := worldfile.Load(os.Args[1])
+	if err != nil {
+		log.Error("load world", "err", err)
+		os.Exit(1)
+	}
+	if err := worldfile.Validate(wf); err != nil {
+		log.Error("invalid world", "err", err)
+		os.Exit(1)
+	}
+
+	hub := server.NewHub(game.NewWorld(wf), log)
+	go hub.Run()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	ln, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		log.Error("listen", "err", err)
+		os.Exit(1)
+	}
+	defer ln.Close()
+	log.Info("server listening", "addr", listenAddr)
+
+	listenAndServe(ctx, ln, hub, log)
 }
 
-// listenAndServe accepts TCP connections in a loop and spawns a Client goroutine per connection.
-// Returns when ctx is cancelled (e.g. Ctrl+C).
+// listenAndServe accepts connections until ctx is cancelled (Ctrl+C).
 func listenAndServe(ctx context.Context, ln net.Listener, hub *server.Hub, log *slog.Logger) {
-	// TODO: implement
+	go func() {
+		<-ctx.Done()
+		ln.Close() // unblocks Accept below
+	}()
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				log.Info("shutting down")
+				return
+			default:
+				log.Error("accept", "err", err)
+				continue
+			}
+		}
+		hub.Accept(conn)
+	}
 }
