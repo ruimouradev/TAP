@@ -61,7 +61,7 @@ run-server: setup-go
 	$(GO) run ./cmd/server data/world.json
 
 run-client: setup-go
-	$(GO) run ./cmd/cli localhost:4242
+	$(GO) run ./cmd/cli
 
 run-client-gui: setup-go
 	$(GO) run ./cmd/gui

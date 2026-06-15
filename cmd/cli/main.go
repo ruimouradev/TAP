@@ -9,10 +9,12 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"the-answer-protocol/internal/config"
 )
 
 func main() {
-	addr := "localhost:4242"
+	addr := "localhost:" + config.Port()
 	if len(os.Args) >= 2 {
 		addr = os.Args[1]
 	}

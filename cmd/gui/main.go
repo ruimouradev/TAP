@@ -35,32 +35,33 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"the-answer-protocol/internal/config"
 	"the-answer-protocol/internal/protocol"
 )
 
 // main creates the Fyne app, opens the connection to the server, wires
 // the read goroutine to the UI, and starts the event loop.
 func main() {
-//   1. parse server addr from os.Args (default "localhost:4242")
+	//   1. parse server addr from os.Args (default from config.Port())
 	addr := parseServerAddr(os.Args)
 
-//   2. Create app and Window("TAP")
+	//   2. Create app and Window("TAP")
 	a := app.New()
 	w := a.NewWindow("TAP")
 
-//   3. Channel to communicate between readLoop (Network thread) and the UI
+	//   3. Channel to communicate between readLoop (Network thread) and the UI
 	eventsCh := make(chan string)
 
-//   4. Dial the server, with clean error handling.
+	//   4. Dial the server, with clean error handling.
 	conn, err := net.Dial("tcp", addr)
 
-//   5. If connection succeeds, start readLoop.
+	//   5. If connection succeeds, start readLoop.
 	if err != nil {
 		log.Printf("failed to connect to %s: %v", addr, err)
 	} else {
 
-//   6. goroutine in background to listen to the server thru conn and wire 
-// 		eventsCh → UI updates
+		//   6. goroutine in background to listen to the server thru conn and wire
+		// 		eventsCh → UI updates
 		go readLoop(conn, eventsCh)
 	}
 
@@ -73,7 +74,7 @@ func main() {
 		),
 	)
 	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, mainCenter))
-//  Shows the window and starts the Main UI Event Loop
+	//  Shows the window and starts the Main UI Event Loop
 	w.ShowAndRun()
 }
 
@@ -81,7 +82,7 @@ func parseServerAddr(args []string) string {
 	if len(args) > 1 && args[1] != "" {
 		return args[1]
 	}
-	return "localhost:4242"
+	return "localhost:" + config.Port()
 }
 
 // readLoop reads lines from the server and pushes them into the events

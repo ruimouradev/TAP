@@ -10,12 +10,11 @@ import (
 	"os"
 	"os/signal"
 
+	"the-answer-protocol/internal/config"
 	"the-answer-protocol/internal/game"
 	"the-answer-protocol/internal/server"
 	"the-answer-protocol/internal/worldfile"
 )
-
-const listenAddr = ":4242"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -40,13 +39,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	ln, err := net.Listen("tcp", listenAddr)
+	addr := ":" + config.Port()
+
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Error("listen", "err", err)
 		os.Exit(1)
 	}
 	defer ln.Close()
-	log.Info("server listening", "addr", listenAddr)
+	log.Info("server listening", "addr", addr)
 
 	listenAndServe(ctx, ln, hub, log)
 }
