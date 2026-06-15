@@ -10,13 +10,11 @@ import (
 	"os"
 	"os/signal"
 
+	"the-answer-protocol/internal/config"
 	"the-answer-protocol/internal/game"
 	"the-answer-protocol/internal/server"
 	"the-answer-protocol/internal/worldfile"
 )
-
-// defaultPort is used when the TAP_PORT env var is not set.
-const defaultPort = "4300"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -41,10 +39,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	addr := ":" + defaultPort
-	if p := os.Getenv("TAP_PORT"); p != "" {
-		addr = ":" + p
-	}
+	addr := ":" + config.Port()
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

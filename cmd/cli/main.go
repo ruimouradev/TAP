@@ -9,13 +9,12 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"the-answer-protocol/internal/config"
 )
 
 func main() {
-	addr := "localhost:4300"
-	if p := os.Getenv("TAP_PORT"); p != "" {
-		addr = "localhost:" + p
-	}
+	addr := "localhost:" + config.Port()
 	if len(os.Args) >= 2 {
 		addr = os.Args[1]
 	}
