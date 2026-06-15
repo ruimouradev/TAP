@@ -23,6 +23,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -32,11 +33,20 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"the-answer-protocol/internal/config"
 	"the-answer-protocol/internal/protocol"
+)
+
+var (
+	// Tracks the last command sent to know how to interpret OK responses
+	lastSentVerb string
+	// Global connection handle so applyResponse can trigger follow-up commands
+	globalConn      net.Conn
+	activeChatScope = "GLOBAL"
 )
 
 // main creates the Fyne app, opens the connection to the server, wires
@@ -59,10 +69,42 @@ func main() {
 	if err != nil {
 		log.Printf("failed to connect to %s: %v", addr, err)
 	} else {
+		globalConn = conn
 
 		//   6. goroutine in background to listen to the server thru conn and wire
 		// 		eventsCh → UI updates
 		go readLoop(conn, eventsCh)
+
+		//   7. Consumer loop: process incoming lines and update UI
+		go func() {
+			for line := range eventsCh {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				// Update UI in the main thread context
+				if strings.HasPrefix(line, "EVT ") {
+					applyEvent(line[4:])
+				} else {
+					applyResponse(line)
+				}
+			}
+		}()
+
+		//   8. Login Dialog: Force CONNECT before starting
+		w.Show()
+		usernameEntry := widget.NewEntry()
+		usernameEntry.SetPlaceHolder("YourName")
+		loginForm := dialog.NewForm("Welcome to TAP", "Connect", "Cancel", []*widget.FormItem{
+			{Text: "Username", Widget: usernameEntry},
+		}, func(ok bool) {
+			if ok && usernameEntry.Text != "" {
+				logCommand(sendCommand(conn, "CONNECT", usernameEntry.Text))
+			} else {
+				a.Quit()
+			}
+		}, w)
+		loginForm.Show()
 	}
 
 	// Devides the window in 2 columns and creates a vertical window for the right
@@ -76,8 +118,9 @@ func main() {
 	)
 	//  container.NewBorder(top, bottom, left, right, center)
 	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, mainCenter))
-	//  Shows the window and starts the Main UI Event Loop
-	w.ShowAndRun()
+
+	// Use Run instead of ShowAndRun since we already called w.Show() to display the dialog
+	a.Run()
 }
 
 func parseServerAddr(args []string) string {
@@ -129,6 +172,8 @@ func sendCommand(conn net.Conn, verb string, args ...string) error {
 	// Initializes a new struct object. Ensure verb is uppercase as per
 	//  protocol design
 	cmd := protocol.Command{Verb: strings.ToUpper(verb), Args: args}
+	lastSentVerb = cmd.Verb
+
 	// Calls String method. Takes the verb and the arguments array and stitch
 	// them together into a string + "/n"
 	line := cmd.String() + "\n"
@@ -155,6 +200,11 @@ var (
 	chatInput            *widget.Entry
 	inventoryItems       *widget.List
 	inventorySelected    *widget.Label
+	statusHPValue        *widget.Label
+	statusServerValue    *widget.Label
+	statusRoomValue      *widget.Label
+	moveButtonsContainer *fyne.Container // New: Container for dynamic move buttons
+	inventoryData        []string
 )
 
 // buildRoomPanel returns the widget that shows the current room's name,
@@ -182,6 +232,8 @@ func buildRoomPanel() fyne.CanvasObject {
 	roomPlayersValue = widget.NewLabel("--")
 	roomPlayersValue.Wrapping = fyne.TextWrapWord
 
+	moveButtonsContainer = container.NewHBox() // Initialize the container for dynamic move buttons
+
 	content := container.NewVBox(
 		widget.NewLabelWithStyle("Room", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewLabelWithStyle("Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -189,7 +241,8 @@ func buildRoomPanel() fyne.CanvasObject {
 		widget.NewLabelWithStyle("Description", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		roomDescriptionValue,
 		widget.NewLabelWithStyle("Exits", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		roomExitsValue,
+		roomExitsValue,       // This shows the text list of exits
+		moveButtonsContainer, // This will hold the buttons for each exit
 		widget.NewLabelWithStyle("Items", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		roomItemsValue,
 		widget.NewLabelWithStyle("NPCs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -224,9 +277,19 @@ func buildChatPanel() fyne.CanvasObject {
 	chatInput = widget.NewEntry()
 	chatInput.SetPlaceHolder("Type a chat message...")
 
+	chatInput.OnSubmitted = func(s string) {
+		if s != "" {
+			logCommand(sendCommand(globalConn, "CHAT", activeChatScope, s))
+			chatInput.SetText("")
+		}
+	}
+
 	inputRow := container.NewBorder(nil, nil, nil,
 		widget.NewButton("SEND", func() {
-			log.Printf("chat send not wired yet: %q", chatInput.Text)
+			if chatInput.Text != "" {
+				logCommand(sendCommand(globalConn, "CHAT", activeChatScope, chatInput.Text))
+				chatInput.SetText("")
+			}
 		}),
 		chatInput,
 	)
@@ -237,32 +300,39 @@ func buildChatPanel() fyne.CanvasObject {
 		container.NewTabItem("GROUP", chatGroupLog),
 	)
 
+	tabs.OnSelected = func(t *container.TabItem) {
+		activeChatScope = t.Text
+	}
+
 	return widget.NewCard("Chat", "Global / room / group chat", container.NewVBox(tabs, inputRow))
 }
 
 // buildInventoryPanel returns the inventory list + a DROP button bound
 // to the currently selected item.
 func buildInventoryPanel() fyne.CanvasObject {
-	items := []string{"Waiting for INVENTORY..."}
+	inventoryData = []string{"Waiting for INVENTORY..."}
 	inventorySelected = widget.NewLabel("Selected item: --")
 	inventorySelected.Wrapping = fyne.TextWrapWord
 
 	inventoryItems = widget.NewList(
-		func() int { return len(items) },
+		func() int { return len(inventoryData) },
 		func() fyne.CanvasObject { return widget.NewLabel("item") },
 		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(items[i])
+			o.(*widget.Label).SetText(inventoryData[i])
 		},
 	)
 
 	inventoryItems.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(items) {
-			inventorySelected.SetText(fmt.Sprintf("Selected item: %s", items[id]))
+		if id >= 0 && id < len(inventoryData) {
+			inventorySelected.SetText(fmt.Sprintf("Selected item: %s", inventoryData[id]))
 		}
 	}
 
 	dropButton := widget.NewButton("DROP", func() {
-		log.Printf("inventory drop not wired yet")
+		item := strings.TrimPrefix(inventorySelected.Text, "Selected item: ")
+		if item != "--" && item != "" {
+			logCommand(sendCommand(globalConn, "DROP", item))
+		}
 	})
 
 	content := container.NewVBox(
@@ -280,8 +350,8 @@ func buildInventoryPanel() fyne.CanvasObject {
 // Each button calls sendCommand with the appropriate verb.
 func buildActionBar(conn net.Conn) fyne.CanvasObject {
 	return container.NewHBox(
-		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }),
-		widget.NewButton("MOVE", func() { logCommand(sendCommand(conn, "MOVE", "north")) }),
+		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }), // LOOK button remains
+		// MOVE buttons are now dynamically generated in the room panel
 		widget.NewButton("TAKE", func() { logCommand(sendCommand(conn, "TAKE", "item")) }),
 		widget.NewButton("DROP", func() { logCommand(sendCommand(conn, "DROP", "item")) }),
 		widget.NewButton("TALK", func() { logCommand(sendCommand(conn, "TALK", "npc")) }),
@@ -295,29 +365,196 @@ func buildActionBar(conn net.Conn) fyne.CanvasObject {
 // buildStatusBar returns the top/bottom bar with HP, players in room,
 // and players on server. Refreshed on STATUS responses and EVT STATS.
 func buildStatusBar() fyne.CanvasObject {
+	statusHPValue = widget.NewLabel("HP: --")
+	statusRoomValue = widget.NewLabel("Room: --")
+	statusServerValue = widget.NewLabel("Server: --")
+
 	return container.NewHBox(
-		widget.NewLabel("HP: --"),
+		statusHPValue,
 		layout.NewSpacer(),
-		widget.NewLabel("Room: --"),
+		statusRoomValue,
 		layout.NewSpacer(),
-		widget.NewLabel("Server: --"),
+		statusServerValue,
 	)
+}
+
+// updateMoveButtons dynamically creates buttons for each available exit.
+func updateMoveButtons(exits map[string]string) {
+	// Clear existing buttons
+	moveButtonsContainer.RemoveAll()
+	if len(exits) == 0 {
+		moveButtonsContainer.Add(widget.NewLabel("No exits available."))
+	} else {
+		for dir := range exits {
+			direction := dir // Capture loop variable for the closure
+			btn := widget.NewButton("MOVE "+strings.ToUpper(direction), func() {
+				logCommand(sendCommand(globalConn, "MOVE", direction))
+			})
+			moveButtonsContainer.Add(btn)
+		}
+	}
+	moveButtonsContainer.Refresh() // Important to refresh the container after adding/removing children
 }
 
 func logCommand(err error) {
 	if err != nil {
-		log.Printf("send command failed: %v", err)
+		log.Printf("Send command failed: %v", err)
 	}
 }
 
 // applyResponse routes an OK / ERR response line to the right panel.
 // Called from the UI side of the events channel.
 func applyResponse(line string) {
-	// TODO: implement — branch on the verb of the last command sent
+	if strings.HasPrefix(line, "ERR ") {
+		log.Printf("Server Error: %s", line[4:])
+		return
+	}
+
+	if !strings.HasPrefix(line, "OK") {
+		return
+	}
+
+	payload := ""
+	if len(line) > 3 {
+		payload = line[3:]
+	}
+
+	// Protocol improvement: check for specific payload formats regardless of lastSentVerb
+	// This handles cases where multiple commands were sent in rapid succession
+	if strings.HasPrefix(payload, "room=") {
+		roomID := strings.TrimPrefix(payload, "room=")
+		statusRoomValue.SetText("Room: " + roomID)
+		// Auto-refresh look when entering a new room
+		logCommand(sendCommand(globalConn, "LOOK"))
+		return
+	}
+
+	switch lastSentVerb {
+	case "CONNECT":
+		// Once connected, sync the UI state immediately
+		logCommand(sendCommand(globalConn, "LOOK"))
+	case "LOOK":
+		var data protocol.LookResponse
+		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			roomNameValue.SetText(data.Room.Name)
+			roomDescriptionValue.SetText(data.Room.Description)
+
+			exits := []string{}
+			for dir := range data.Room.Exits {
+				exits = append(exits, dir)
+			}
+			roomExitsValue.SetText(strings.Join(exits, ", "))
+			statusRoomValue.SetText("Room: " + data.Room.ID)
+
+			items := []string{}
+			for _, item := range data.Items {
+				items = append(items, item.Name)
+			}
+			roomItemsValue.SetText(strings.Join(items, ", "))
+
+			npcs := []string{}
+			for _, npc := range data.NPCs {
+				npcs = append(npcs, npc.Name)
+			}
+			roomNPCsValue.SetText(strings.Join(npcs, ", "))
+			roomPlayersValue.SetText(strings.Join(data.Players, ", "))
+
+			updateMoveButtons(data.Room.Exits)
+
+			// After a successful LOOK, update secondary info if it's the first time
+			if statusHPValue.Text == "HP: --" {
+				logCommand(sendCommand(globalConn, "STATUS"))
+				logCommand(sendCommand(globalConn, "INVENTORY"))
+			}
+		}
+	case "STATUS":
+		var data protocol.StatusResponse
+		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			statusHPValue.SetText(fmt.Sprintf("HP: %d/%d", data.HP, data.MaxHP))
+		}
+	case "INVENTORY":
+		var items []protocol.InventoryItem
+		if err := json.Unmarshal([]byte(payload), &items); err == nil {
+			inventoryData = nil
+			for _, itm := range items {
+				inventoryData = append(inventoryData, itm.Name)
+			}
+			inventoryItems.Refresh()
+		}
+	case "ATTACK":
+		var data protocol.AttackResponse
+		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			formatted := fmt.Sprintf("[Combat] You dealt %d damage. Target HP: %d/%d. Status: %s\n",
+				data.Damage, data.TargetHP, data.TargetHP+data.Damage, data.Status) // Simplified calculation for display
+			if data.Counter > 0 {
+				formatted += fmt.Sprintf("[Combat] NPC countered for %d damage! Your HP: %d\n", data.Counter, data.AttackerHP)
+			}
+			chatRoomLog.SetText(chatRoomLog.Text + formatted)
+			scrollBottom(chatRoomLog)
+			// Also refresh status bar HP
+			statusHPValue.SetText(fmt.Sprintf("HP: %d/--", data.AttackerHP))
+		}
+	case "TALK":
+		var data protocol.TalkResponse
+		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			formatted := fmt.Sprintf("[%s]: \"%s\"\n", data.NPC, data.Dialogue)
+			chatRoomLog.SetText(chatRoomLog.Text + formatted)
+			scrollBottom(chatRoomLog)
+		}
+	}
 }
 
 // applyEvent routes an EVT line to the right panel (chat / room presence
 // / group / stats).
 func applyEvent(line string) {
-	// TODO: implement — branch on the EVT category (ROOM / GLOBAL / GROUP / STATS)
+	parts := strings.SplitN(line, " ", 2)
+	if len(parts) < 2 {
+		return
+	}
+
+	category := parts[0]
+	data := parts[1]
+
+	switch category {
+	case "CHAT":
+		handleChatEvent(data)
+	case "STATS":
+		statusServerValue.SetText("Server: " + data)
+	case "ROOM":
+		// If room presence changes, we usually trigger a LOOK to refresh the panel
+		// but we can also just log it to the room chat.
+		chatRoomLog.SetText(chatRoomLog.Text + "\n" + "[System] " + data)
+	}
+}
+
+func handleChatEvent(payload string) {
+	// Format: <SCOPE> <sender> <message>
+	parts := strings.SplitN(payload, " ", 3)
+	if len(parts) < 3 {
+		return
+	}
+
+	scope := parts[0]
+	sender := parts[1]
+	msg := parts[2]
+
+	formatted := fmt.Sprintf("[%s]: %s\n", sender, msg)
+
+	switch scope {
+	case "GLOBAL":
+		chatGlobalLog.SetText(chatGlobalLog.Text + formatted)
+		scrollBottom(chatGlobalLog)
+	case "ROOM":
+		chatRoomLog.SetText(chatRoomLog.Text + formatted)
+		scrollBottom(chatRoomLog)
+	case "GROUP":
+		chatGroupLog.SetText(chatGroupLog.Text + formatted)
+		scrollBottom(chatGroupLog)
+	}
+}
+
+func scrollBottom(e *widget.Entry) {
+	// Helper to keep chat logs visible at the bottom
+	e.CursorRow = len(strings.Split(e.Text, "\n"))
+	e.Refresh()
 }
