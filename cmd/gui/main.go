@@ -81,7 +81,10 @@ func parseServerAddr(args []string) string {
 	if len(args) > 1 && args[1] != "" {
 		return args[1]
 	}
-	return "localhost:4242"
+	if p := os.Getenv("TAP_PORT"); p != "" {
+		return "localhost:" + p
+	}
+	return "localhost:4300"
 }
 
 // readLoop reads lines from the server and pushes them into the events

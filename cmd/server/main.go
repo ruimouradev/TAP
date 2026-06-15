@@ -15,7 +15,8 @@ import (
 	"the-answer-protocol/internal/worldfile"
 )
 
-const listenAddr = ":4242"
+// defaultPort is used when the TAP_PORT env var is not set.
+const defaultPort = "4300"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -40,13 +41,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	ln, err := net.Listen("tcp", listenAddr)
+	addr := ":" + defaultPort
+	if p := os.Getenv("TAP_PORT"); p != "" {
+		addr = ":" + p
+	}
+
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Error("listen", "err", err)
 		os.Exit(1)
 	}
 	defer ln.Close()
-	log.Info("server listening", "addr", listenAddr)
+	log.Info("server listening", "addr", addr)
 
 	listenAndServe(ctx, ln, hub, log)
 }

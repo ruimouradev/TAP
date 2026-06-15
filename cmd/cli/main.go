@@ -12,7 +12,10 @@ import (
 )
 
 func main() {
-	addr := "localhost:4242"
+	addr := "localhost:4300"
+	if p := os.Getenv("TAP_PORT"); p != "" {
+		addr = "localhost:" + p
+	}
 	if len(os.Args) >= 2 {
 		addr = os.Args[1]
 	}
