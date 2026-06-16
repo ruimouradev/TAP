@@ -240,6 +240,7 @@ func TestItemsAndTalk(t *testing.T) {
 	}
 }
 
+
 func TestDuplicateName(t *testing.T) {
 	addr := newTestServer(t)
 	alice := connect(t, addr, "alice")
