@@ -4,7 +4,6 @@ package game
 
 import (
 	"errors"
-	"strings"
 
 	"the-answer-protocol/internal/worldfile"
 )
@@ -187,10 +186,5 @@ func (w *World) TotalPlayers() int { return len(w.Players) }
 
 // NPCInRoom finds an NPC in room by ID or display name (case-insensitive).
 func (w *World) NPCInRoom(room *Room, name string) (*NPC, bool) {
-	for _, npc := range room.NPCs {
-		if strings.EqualFold(npc.ID, name) || strings.EqualFold(npc.Name, name) {
-			return npc, true
-		}
-	}
-	return nil, false
+	return findNPC(room, name)
 }

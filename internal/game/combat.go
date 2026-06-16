@@ -1,19 +1,15 @@
-/*
-Package game — Owner: Rui.
-
-File combat.go: TAP combat system.
-Design decision (document in README):
-  - Turn-based: each ATTACK command is one combat round.
-  - No persistent "in combat" state — any command is valid between attacks.
-  - Counter-attack: the NPC retaliates each round unless it is defeated.
-  - Defeat: player HP reaches 0 → respawn at start room with 50% MaxHP.
-  - Optional commands to design: DEFEND (reduce incoming damage), FLEE (exit combat).
-
-Document the damage formula, initiative order, and any extra commands in the README.
-*/
+// combat.go: the combat system. Combat is turn-based — each ATTACK command is
+// one round. There is no persistent "in combat" state, so any command is valid
+// between rounds. The attacked NPC counter-attacks each round unless it is
+// defeated; when a player's HP reaches 0 they respawn at the start room with
+// half their max HP.
 package game
 
-import "errors"
+import (
+	"errors"
+	"math/rand"
+	"strings"
+)
 
 // CombatResult holds the outcome of one round of combat.
 type CombatResult struct {
@@ -26,23 +22,82 @@ type CombatResult struct {
 	PlayerDied bool   // true if the player's HP reached 0
 }
 
-// ErrNPCNotHostile is returned when trying to attack a non-hostile NPC.
-var ErrNPCNotHostile = errors.New("npc not hostile")
+var (
+	ErrNPCNotFound   = errors.New("npc not found")
+	ErrNPCNotHostile = errors.New("npc not hostile")
+)
 
-// Attack executes one round of combat between player and the named NPC in room.
-// Returns the full CombatResult so the server can broadcast it.
-func Attack(player *Player, room *Room, npcName string) (*CombatResult, error) {
-	return nil, nil // TODO: implement
-}
+// Damage of a single hit is a random value in [minDamage, maxDamage], for the
+// player and the NPC alike. Neither has separate attack/defense stats, so the
+// formula is intentionally simple — change the range to tune difficulty.
+const (
+	minDamage = 10
+	maxDamage = 20
+)
 
-// calculateDamage computes how much damage is dealt in one attack.
-// Define your formula here and document it in the README.
+// calculateDamage returns the damage of one hit.
 func calculateDamage() int {
-	return 0 // TODO: implement — decide attacker/defender stats first
+	return minDamage + rand.Intn(maxDamage-minDamage+1)
 }
 
-// RespawnPlayer resets a dead player at the world's start room with 50% MaxHP.
-// Called by the Hub after a player's HP reaches 0.
+// Attack runs one round of combat between player and the named NPC in room.
+// The player strikes first; if the NPC survives, it counter-attacks.
+func Attack(player *Player, room *Room, npcName string) (*CombatResult, error) {
+	npc, ok := findNPC(room, npcName)
+	if !ok {
+		return nil, ErrNPCNotFound
+	}
+	if !npc.Hostile {
+		return nil, ErrNPCNotHostile
+	}
+
+	res := &CombatResult{}
+
+	// player hits the NPC
+	res.Damage = calculateDamage()
+	npc.HP -= res.Damage
+	if npc.HP <= 0 {
+		npc.HP = 0
+		res.Defeated = true
+		res.Status = "victory"
+		res.TargetHP = 0
+		res.AttackerHP = player.HP
+		return res, nil
+	}
+
+	// the NPC survives and counter-attacks
+	res.CounterDmg = calculateDamage()
+	player.HP -= res.CounterDmg
+	if player.HP <= 0 {
+		player.HP = 0
+		res.PlayerDied = true
+		res.Status = "defeat"
+	} else {
+		res.Status = "combat"
+	}
+	res.TargetHP = npc.HP
+	res.AttackerHP = player.HP
+	return res, nil
+}
+
+// RespawnPlayer moves a defeated player back to the start room with half HP.
 func RespawnPlayer(world *World, player *Player) {
-	// TODO: implement
+	if room := world.Rooms[player.CurrentRoom]; room != nil {
+		delete(room.Players, player.Username)
+	}
+	player.CurrentRoom = world.StartRoom
+	player.HP = player.MaxHP / 2
+	if start := world.Rooms[world.StartRoom]; start != nil {
+		start.Players[player.Username] = player
+	}
+}
+
+// findNPC looks up an NPC in room by ID or display name (case-insensitive).
+func findNPC(room *Room, name string) (*NPC, bool) {
+	for _, npc := range room.NPCs {
+		if strings.EqualFold(npc.ID, name) || strings.EqualFold(npc.Name, name) {
+			return npc, true
+		}
+	}
+	return nil, false
 }
