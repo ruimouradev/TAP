@@ -1,6 +1,5 @@
 // dispatch.go: the command router. Maps each verb to a handler; handlers run
 // inside the Hub goroutine, so they touch h.world directly without locks.
-// Only the vertical-slice verbs are wired here; the rest come in Bloco 4.
 package server
 
 import (
@@ -21,12 +20,16 @@ const errBadRequest = 400
 // dispatch routes cmd to its handler and sends the response to c.
 func (h *Hub) dispatch(c *Client, cmd protocol.Command) {
 	handlers := map[string]HandlerFunc{
-		"CONNECT": handleConnect,
-		"LOOK":    handleLook,
-		"MOVE":    handleMove,
-		"CHAT":    handleChat,
-		"WHO":     handleWho,
-		"QUIT":    handleQuit,
+		"CONNECT":   handleConnect,
+		"LOOK":      handleLook,
+		"MOVE":      handleMove,
+		"CHAT":      handleChat,
+		"WHO":       handleWho,
+		"QUIT":      handleQuit,
+		"TAKE":      handleTake,
+		"DROP":      handleDrop,
+		"INVENTORY": handleInventory,
+		"TALK":      handleTalk,
 	}
 	handler, ok := handlers[cmd.Verb]
 	if !ok {
@@ -58,7 +61,8 @@ func handleConnect(h *Hub, c *Client, args []string) string {
 }
 
 // handleQuit: QUIT — the client closes the connection on "OK bye"; the server's
-// readPump then sees the close and unregisters. (Server-side close is Bloco 5.)
+// readPump then sees the close and unregisters. The server never closes the
+// socket itself.
 func handleQuit(h *Hub, c *Client, args []string) string {
 	return protocol.OK("bye")
 }
@@ -120,11 +124,77 @@ func handleChat(h *Hub, c *Client, args []string) string {
 		p := h.world.GetPlayer(c.username)
 		h.broadcast(p.CurrentRoom, protocol.RoomChat(c.username, msg), nil)
 	case "GROUP":
-		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup) // Bloco 4
+		// group chat needs a group system, which isn't implemented yet
+		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
 	default:
 		return protocol.Errf(errBadRequest, "BAD_SCOPE")
 	}
 	return protocol.OK("")
+}
+
+// handleTake: TAKE <item> — move an item from the room floor to the inventory.
+// The identifier may be an ID or a multi-word display name, so we join the args.
+func handleTake(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_ITEM")
+	}
+	p := h.world.GetPlayer(c.username)
+	room := h.world.GetRoom(p.CurrentRoom)
+	it, err := game.TakeItem(room, p, strings.Join(args, " "))
+	if err != nil {
+		return protocol.Errf(protocol.ErrCodeItemNotFound, protocol.MsgItemNotFound)
+	}
+	return protocol.OKf("took %s", it.ID)
+}
+
+// handleDrop: DROP <item> — move an item from the inventory back to the floor.
+func handleDrop(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_ITEM")
+	}
+	p := h.world.GetPlayer(c.username)
+	room := h.world.GetRoom(p.CurrentRoom)
+	it, err := game.DropItem(p, room, strings.Join(args, " "))
+	if err != nil {
+		return protocol.Errf(protocol.ErrCodeItemNotFound, protocol.MsgItemNotInInv)
+	}
+	return protocol.OKf("dropped %s", it.ID)
+}
+
+// handleInventory: INVENTORY — the player's items as a JSON array.
+func handleInventory(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	p := h.world.GetPlayer(c.username)
+	items := make([]protocol.InventoryItem, 0, len(p.Inventory))
+	for _, it := range p.Inventory {
+		items = append(items, protocol.InventoryItem{ID: it.ID, Name: it.Name})
+	}
+	return protocol.OKJson(items)
+}
+
+// handleTalk: TALK <npc> — return the NPC's dialogue (matched by ID or name).
+func handleTalk(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_NPC")
+	}
+	p := h.world.GetPlayer(c.username)
+	room := h.world.GetRoom(p.CurrentRoom)
+	npc, ok := h.world.NPCInRoom(room, strings.Join(args, " "))
+	if !ok {
+		return protocol.Errf(protocol.ErrCodeNPCNotFound, protocol.MsgNPCNotFound)
+	}
+	return protocol.OKJson(protocol.TalkResponse{NPC: npc.Name, Dialogue: npc.Dialogue})
 }
 
 // buildLook converts a room into the LOOK JSON payload.

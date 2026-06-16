@@ -15,22 +15,9 @@ import (
 	"the-answer-protocol/internal/game"
 )
 
-// newTestServer starts a Hub on a tiny 2-room world and returns its address.
-func newTestServer(t *testing.T) string {
+// startServer runs a Hub on the given world and returns its listening address.
+func startServer(t *testing.T, world *game.World) string {
 	t.Helper()
-	world := &game.World{
-		Rooms: map[string]*game.Room{
-			"loc.square": {ID: "loc.square", Name: "Square", Description: "a square",
-				Exits: map[string]string{"north": "loc.bakery"},
-				Items: map[string]*game.Item{}, NPCs: map[string]*game.NPC{}, Players: map[string]*game.Player{}},
-			"loc.bakery": {ID: "loc.bakery", Name: "Bakery", Description: "a bakery",
-				Exits: map[string]string{"south": "loc.square"},
-				Items: map[string]*game.Item{}, NPCs: map[string]*game.NPC{}, Players: map[string]*game.Player{}},
-		},
-		Players:   map[string]*game.Player{},
-		StartRoom: "loc.square",
-		Quests:    map[string]*game.QuestDef{},
-	}
 	hub := NewHub(world, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	go hub.Run()
 
@@ -49,6 +36,25 @@ func newTestServer(t *testing.T) string {
 	}()
 	t.Cleanup(func() { ln.Close() })
 	return ln.Addr().String()
+}
+
+// newTestServer starts a Hub on a tiny 2-room world and returns its address.
+func newTestServer(t *testing.T) string {
+	t.Helper()
+	world := &game.World{
+		Rooms: map[string]*game.Room{
+			"loc.square": {ID: "loc.square", Name: "Square", Description: "a square",
+				Exits: map[string]string{"north": "loc.bakery"},
+				Items: map[string]*game.Item{}, NPCs: map[string]*game.NPC{}, Players: map[string]*game.Player{}},
+			"loc.bakery": {ID: "loc.bakery", Name: "Bakery", Description: "a bakery",
+				Exits: map[string]string{"south": "loc.square"},
+				Items: map[string]*game.Item{}, NPCs: map[string]*game.NPC{}, Players: map[string]*game.Player{}},
+		},
+		Players:   map[string]*game.Player{},
+		StartRoom: "loc.square",
+		Quests:    map[string]*game.QuestDef{},
+	}
+	return startServer(t, world)
 }
 
 type testClient struct {
@@ -164,6 +170,74 @@ func TestPresenceAndChat(t *testing.T) {
 		t.Fatalf("MOVE = %q", g)
 	}
 	bob.waitEvent("EVT ROOM PRESENCE LEAVE alice")
+}
+
+// itemsWorld is a one-room world with an item on the floor and a talking NPC.
+func itemsWorld() *game.World {
+	return &game.World{
+		Rooms: map[string]*game.Room{
+			"loc.square": {ID: "loc.square", Name: "Square", Description: "a square",
+				Exits: map[string]string{},
+				Items: map[string]*game.Item{
+					"item.coin": {ID: "item.coin", Name: "Gold Coin"},
+				},
+				NPCs: map[string]*game.NPC{
+					"npc.baker": {ID: "npc.baker", Name: "Baker", Dialogue: "Fresh bread!"},
+				},
+				Players: map[string]*game.Player{}},
+		},
+		Players:   map[string]*game.Player{},
+		StartRoom: "loc.square",
+		Quests:    map[string]*game.QuestDef{},
+	}
+}
+
+func TestItemsAndTalk(t *testing.T) {
+	addr := startServer(t, itemsWorld())
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+
+	// take by multi-word display name
+	alice.send("TAKE Gold Coin")
+	if g := alice.response(); g != "OK took item.coin" {
+		t.Fatalf("TAKE = %q", g)
+	}
+
+	// the item is now in the inventory
+	alice.send("INVENTORY")
+	if g := alice.response(); !strings.Contains(g, `"id":"item.coin"`) {
+		t.Fatalf("INVENTORY = %q", g)
+	}
+
+	// and gone from the floor
+	alice.send("TAKE Gold Coin")
+	if g := alice.response(); g != "ERR 404 ITEM_NOT_FOUND" {
+		t.Fatalf("second TAKE = %q", g)
+	}
+
+	// drop by ID puts it back on the floor
+	alice.send("DROP item.coin")
+	if g := alice.response(); g != "OK dropped item.coin" {
+		t.Fatalf("DROP = %q", g)
+	}
+
+	// dropping it again fails: no longer in the inventory
+	alice.send("DROP item.coin")
+	if g := alice.response(); g != "ERR 404 ITEM_NOT_IN_INVENTORY" {
+		t.Fatalf("second DROP = %q", g)
+	}
+
+	// talk to the NPC by name
+	alice.send("TALK Baker")
+	if g := alice.response(); !strings.Contains(g, `"dialogue":"Fresh bread!"`) {
+		t.Fatalf("TALK = %q", g)
+	}
+
+	// talk to a missing NPC
+	alice.send("TALK ghost")
+	if g := alice.response(); g != "ERR 404 NPC_NOT_FOUND" {
+		t.Fatalf("TALK ghost = %q", g)
+	}
 }
 
 func TestDuplicateName(t *testing.T) {

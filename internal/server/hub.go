@@ -17,7 +17,7 @@ type Hub struct {
 	unregister chan *Client
 	commands   chan incomingCmd
 	clients    map[*Client]bool
-	groups     map[string]*Group // groupID → Group (used in Bloco 4)
+	groups     map[string]*Group // groupID → Group (empty until groups exist)
 	world      *game.World       // only the Hub touches this
 	log        *slog.Logger
 }
@@ -28,7 +28,7 @@ type incomingCmd struct {
 	cmd    protocol.Command
 }
 
-// Group represents a player group (party). Used by the Bloco 4 handlers.
+// Group represents a player group (party).
 type Group struct {
 	ID      string
 	Leader  string
