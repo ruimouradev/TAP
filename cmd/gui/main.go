@@ -60,14 +60,17 @@ func main() {
 	w := a.NewWindow("TAP")
 
 	//   3. Channel to communicate between readLoop (Network thread) and the UI
-	eventsCh := make(chan string)
+	// using a buffer of up to 100 messages to avoid frezing readLoop
+	eventsCh := make(chan string, 100)
 
 	//   4. Dial the server, with clean error handling.
 	conn, err := net.Dial("tcp", addr)
 
 	//   5. If connection succeeds, start readLoop.
 	if err != nil {
-		log.Printf("failed to connect to %s: %v", addr, err)
+		// log.Fatalf prints the error and calls os.Exit(1) immediately, 
+        // preventing a nil-pointer crash later down the line.
+        log.Fatalf("❌ Critical Error: Failed to connect to server at %s: %v", addr, err)
 	} else {
 		globalConn = conn
 
@@ -76,7 +79,9 @@ func main() {
 		go readLoop(conn, eventsCh)
 
 		//   7. Consumer loop: process incoming lines and update UI
+		// anonymous function
 		go func() {
+			// blocking loop, sits waiting for readLoop to drop a new string into eventsCh
 			for line := range eventsCh {
 				line = strings.TrimSpace(line)
 				if line == "" {
@@ -89,20 +94,27 @@ func main() {
 					applyResponse(line)
 				}
 			}
+		// () tells Go to immediately invoke (execute)
 		}()
 
 		//   8. Login Dialog: Force CONNECT before starting
+		// makes the primary game window visible
 		w.Show()
+		// Instantiates an interactive, editable text input field
 		usernameEntry := widget.NewEntry()
+		// Sets a faint, gray ghost visual clue text inside the empty text box.
 		usernameEntry.SetPlaceHolder("YourName")
+		// Popup form: []*widget.FormItem{...}: array containing the rows of the form
 		loginForm := dialog.NewForm("Welcome to TAP", "Connect", "Cancel", []*widget.FormItem{
 			{Text: "Username", Widget: usernameEntry},
+		// The callback function. Code that sits dormant until player clicks one of the two buttons.
 		}, func(ok bool) {
 			if ok && usernameEntry.Text != "" {
 				logCommand(sendCommand(conn, "CONNECT", usernameEntry.Text))
 			} else {
 				a.Quit()
 			}
+			// The parent window (w) this dialog belongs to
 		}, w)
 		loginForm.Show()
 	}
