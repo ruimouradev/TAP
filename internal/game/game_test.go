@@ -24,6 +24,7 @@ func buildTestWorld() *World {
 		Players:   map[string]*Player{},
 		StartRoom: "loc.square",
 		Quests:    map[string]*QuestDef{},
+		Items:     map[string]*Item{},
 	}
 }
 
@@ -89,5 +90,121 @@ func TestTakeAndDropItem(t *testing.T) {
 	}
 	if _, back := square.Items["item.herbs"]; !back {
 		t.Error("item not back on the floor after DropItem")
+	}
+}
+
+func TestCombat(t *testing.T) {
+	w := buildTestWorld()
+	square := w.Rooms["loc.square"]
+	square.NPCs["npc.goblin"] = &NPC{ID: "npc.goblin", Name: "Goblin", Hostile: true, HP: 1, MaxHP: 1}
+	square.NPCs["npc.guard"] = &NPC{ID: "npc.guard", Name: "Guard", Hostile: false, HP: 30, MaxHP: 30}
+	alice, _ := w.AddPlayer("alice")
+
+	// attacking a non-hostile NPC is refused
+	if _, err := Attack(alice, square, "Guard"); err != ErrNPCNotHostile {
+		t.Errorf("attack guard err = %v, want ErrNPCNotHostile", err)
+	}
+
+	// attacking a missing NPC is refused
+	if _, err := Attack(alice, square, "dragon"); err != ErrNPCNotFound {
+		t.Errorf("attack dragon err = %v, want ErrNPCNotFound", err)
+	}
+
+	// one hit kills the 1-HP goblin → victory, no counter-attack
+	res, err := Attack(alice, square, "goblin")
+	if err != nil {
+		t.Fatalf("attack goblin: %v", err)
+	}
+	if !res.Defeated || res.Status != "victory" {
+		t.Errorf("goblin result = %+v, want defeated victory", res)
+	}
+	if res.CounterDmg != 0 {
+		t.Errorf("defeated NPC counter = %d, want 0", res.CounterDmg)
+	}
+
+	// the defeated NPC leaves the room (can't be hit again)
+	if _, stillHere := square.NPCs["npc.goblin"]; stillHere {
+		t.Error("defeated goblin still in the room")
+	}
+	if _, err := Attack(alice, square, "goblin"); err != ErrNPCNotFound {
+		t.Errorf("re-attack defeated err = %v, want ErrNPCNotFound", err)
+	}
+}
+
+func TestDefeatAndRespawn(t *testing.T) {
+	w := buildTestWorld()
+	square := w.Rooms["loc.square"]
+	square.NPCs["npc.dragon"] = &NPC{ID: "npc.dragon", Name: "Dragon", Hostile: true, HP: 1000, MaxHP: 1000}
+	alice, _ := w.AddPlayer("alice")
+	alice.HP = 5 // any counter-attack (>= 10) finishes alice this round
+
+	res, err := Attack(alice, square, "dragon")
+	if err != nil {
+		t.Fatalf("attack dragon: %v", err)
+	}
+	if !res.PlayerDied || res.Status != "defeat" {
+		t.Fatalf("result = %+v, want player died, defeat", res)
+	}
+
+	RespawnPlayer(w, alice)
+	if alice.HP != alice.MaxHP/2 {
+		t.Errorf("respawn HP = %d, want %d", alice.HP, alice.MaxHP/2)
+	}
+	if alice.CurrentRoom != w.StartRoom {
+		t.Errorf("respawn room = %q, want %q", alice.CurrentRoom, w.StartRoom)
+	}
+}
+
+func TestQuests(t *testing.T) {
+	w := buildTestWorld()
+	w.Items["item.herbs"] = &Item{ID: "item.herbs", Name: "Healing Herbs"}
+	w.Items["item.gold"] = &Item{ID: "item.gold", Name: "Gold"}
+	w.Quests["quest.herbs"] = &QuestDef{
+		ID: "quest.herbs", Description: "Bring herbs", Type: "fetch",
+		TargetID: "item.herbs", Reward: "item.gold",
+	}
+	square := w.Rooms["loc.square"]
+	square.NPCs["npc.elder"] = &NPC{ID: "npc.elder", Name: "Elder", Role: "quest-giver", QuestID: "quest.herbs"}
+	square.NPCs["npc.dog"] = &NPC{ID: "npc.dog", Name: "Dog"} // no quest
+
+	alice, _ := w.AddPlayer("alice")
+
+	// an NPC without a quest → ErrNoQuestAvailable
+	if _, err := GetQuestFromNPC(w, alice, square, "Dog"); err != ErrNoQuestAvailable {
+		t.Errorf("dog quest err = %v, want ErrNoQuestAvailable", err)
+	}
+
+	// get and start the elder's quest
+	def, err := GetQuestFromNPC(w, alice, square, "Elder")
+	if err != nil {
+		t.Fatalf("GetQuestFromNPC: %v", err)
+	}
+	StartQuest(alice, def)
+	pq := alice.Quests["quest.herbs"]
+	if pq == nil || pq.State != QuestActive {
+		t.Fatalf("quest not active after StartQuest")
+	}
+
+	// asking again is refused (already taken)
+	if _, err := GetQuestFromNPC(w, alice, square, "Elder"); err != ErrNoQuestAvailable {
+		t.Errorf("second request err = %v, want ErrNoQuestAvailable", err)
+	}
+
+	// not complete until the player holds the herbs
+	if CheckCompletion(alice, pq) {
+		t.Error("quest reported complete without the item")
+	}
+	alice.Inventory["item.herbs"] = &Item{ID: "item.herbs", Name: "Healing Herbs"}
+	if !CheckCompletion(alice, pq) {
+		t.Error("quest not complete with the item in inventory")
+	}
+
+	// completing it grants the reward and flips the state
+	CompleteQuest(w, alice, pq)
+	if pq.State != QuestCompleted {
+		t.Error("quest state not Completed after CompleteQuest")
+	}
+	if _, ok := alice.Inventory["item.gold"]; !ok {
+		t.Error("reward item.gold not granted")
 	}
 }

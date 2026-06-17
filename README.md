@@ -15,8 +15,8 @@ Built in Go. No persistence — world state resets when the server restarts.
 ```
 make deps           # download Go dependencies
 make run-server     # start the TAP server (requires data/world.json)
-make run-client     # start the CLI client (connects to localhost:4242)
-make run-client-gui # start the Fyne GUI client (connects to localhost:4242)
+make run-client     # start the CLI client (connects to localhost:4300)
+make run-client-gui # start the Fyne GUI client (connects to localhost:4300)
 make lint           # run gofmt + go vet
 make clean          # remove build artifacts
 ```
@@ -204,38 +204,54 @@ go run -race ./cmd/server data/world.json
 
 ## Testing
 
-> [!WARNING]
-> **TODO (both)** — Expand these sections once the implementation is complete. Include exact commands, expected outputs, and edge cases tested.
+### Automated tests
 
-### Multiplayer
+Run from the project root (the race detector catches concurrency bugs):
 
-Open two terminals and run `make run-client` in each. Connect with different usernames and verify:
-- `MOVE` broadcasts `EVT ROOM PRESENCE ENTER/LEAVE` to the other player
-- `CHAT ROOM` is visible only to players in the same room
-- `CHAT GLOBAL` is visible to everyone
-- One player taking an item removes it from the room for all others
+```bash
+go test -race ./...        # all packages
+go test -race ./internal/server -v   # server integration tests, case by case
+```
+
+The suite covers the protocol (parsing, responses, events), the game core
+(world, items, combat, quests) and the server end-to-end over real TCP
+(vertical slice, presence/chat, items, combat, groups, quests, duplicate names).
+
+### Multiplayer (manual)
+
+Start the server, then open two terminals with `make run-client` and connect with
+different usernames. Verify:
+- `MOVE` broadcasts `EVT ROOM PRESENCE ENTER/LEAVE` to players in the room left/entered
+- `CHAT ROOM` reaches only the same room; `CHAT GLOBAL` reaches everyone
+- one player's `TAKE` removes the item from the room for the other
+- a group: `GROUP CREATE` / `GROUP INVITE <name>` / `GROUP JOIN` / `CHAT GROUP <msg>`
 
 ### Combat
 
 ```
 CONNECT alice
-MOVE south        # navigate to forest
-ATTACK goblin
-STATUS            # verify HP changed
+MOVE east          # square -> market
+MOVE north         # market -> forest_path (a hostile Goblin is here)
+ATTACK Goblin      # repeat until "status":"victory"
+ATTACK Goblin      # now ERR 404 NPC_NOT_FOUND — the defeated NPC is gone
+STATUS             # HP reduced by the counter-attacks
 ```
 
-Kill the goblin and verify it disappears. Reduce your HP to 0 and verify respawn.
+To see a respawn, fight the stronger Goblin Chief (`loc.deep_forest`) until your
+HP hits 0 — you respawn at the start room with half HP.
 
 ### Quests
 
 ```
 CONNECT alice
-MOVE east         # go to market, pick up herbs
-TAKE Healing Herbs
-MOVE west         # back to square
-MOVE north        # to bakery
-QUEST baker       # accept quest
-TALK baker        # trigger completion check
+MOVE north         # square -> bakery
+QUEST Baker        # accept quest.fetch_herbs (active)
+QUESTS             # shows "status":"active"
+MOVE south
+MOVE east          # -> market
+TAKE Healing Herbs # the quest objective
+QUESTS             # now "status":"completed" — reward (Loaf of Bread) granted
+INVENTORY          # contains item.bread
 ```
 
 ---

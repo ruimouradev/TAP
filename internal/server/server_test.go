@@ -240,6 +240,191 @@ func TestItemsAndTalk(t *testing.T) {
 	}
 }
 
+// combatWorld is a one-room world with a weak hostile NPC and a peaceful guard.
+func combatWorld() *game.World {
+	return &game.World{
+		Rooms: map[string]*game.Room{
+			"loc.square": {ID: "loc.square", Name: "Square", Description: "a square",
+				Exits: map[string]string{},
+				Items: map[string]*game.Item{},
+				NPCs: map[string]*game.NPC{
+					"npc.goblin": {ID: "npc.goblin", Name: "Goblin", Hostile: true, HP: 1, MaxHP: 1},
+					"npc.guard":  {ID: "npc.guard", Name: "Guard", Hostile: false, HP: 30, MaxHP: 30},
+				},
+				Players: map[string]*game.Player{}},
+		},
+		Players:   map[string]*game.Player{},
+		StartRoom: "loc.square",
+		Quests:    map[string]*game.QuestDef{},
+		Items:     map[string]*game.Item{},
+	}
+}
+
+func TestCombatAndStatus(t *testing.T) {
+	addr := startServer(t, combatWorld())
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+
+	// a fresh player is healthy at full HP
+	alice.send("STATUS")
+	if g := alice.response(); !strings.Contains(g, `"hp":100`) || !strings.Contains(g, `"status":"healthy"`) {
+		t.Fatalf("STATUS = %q", g)
+	}
+
+	// attacking a non-hostile NPC is refused
+	alice.send("ATTACK Guard")
+	if g := alice.response(); g != "ERR 405 NPC_NOT_HOSTILE" {
+		t.Fatalf("ATTACK Guard = %q", g)
+	}
+
+	// attacking a missing NPC is refused
+	alice.send("ATTACK dragon")
+	if g := alice.response(); g != "ERR 404 NPC_NOT_FOUND" {
+		t.Fatalf("ATTACK dragon = %q", g)
+	}
+
+	// one hit kills the 1-HP goblin → victory
+	alice.send("ATTACK Goblin")
+	if g := alice.response(); !strings.Contains(g, `"status":"victory"`) {
+		t.Fatalf("ATTACK Goblin = %q", g)
+	}
+
+	// the defeated goblin is gone — attacking again returns NPC_NOT_FOUND
+	alice.send("ATTACK Goblin")
+	if g := alice.response(); g != "ERR 404 NPC_NOT_FOUND" {
+		t.Fatalf("re-ATTACK Goblin = %q", g)
+	}
+}
+
+func TestCombatBroadcast(t *testing.T) {
+	addr := startServer(t, combatWorld())
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+	bob := connect(t, addr, "bob")
+	defer bob.close()
+	alice.waitEvent("EVT ROOM PRESENCE ENTER bob")
+
+	// alice attacks the goblin → bob (same room) sees the combat event
+	alice.send("ATTACK Goblin")
+	alice.response()
+	bob.waitEvent("EVT ROOM COMBAT alice Goblin")
+}
+
+func TestGroups(t *testing.T) {
+	addr := newTestServer(t)
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+	bob := connect(t, addr, "bob")
+	defer bob.close()
+	alice.waitEvent("EVT ROOM PRESENCE ENTER bob")
+
+	// alice creates a group (named after the leader)
+	alice.send("GROUP CREATE")
+	if g := alice.response(); g != "OK group=alice" {
+		t.Fatalf("GROUP CREATE = %q", g)
+	}
+
+	// alice invites bob → bob gets an invite event
+	alice.send("GROUP INVITE bob")
+	if g := alice.response(); g != "OK invited" {
+		t.Fatalf("GROUP INVITE = %q", g)
+	}
+	bob.waitEvent("EVT GROUP INVITE alice")
+
+	// bob joins → alice sees the join
+	bob.send("GROUP JOIN")
+	if g := bob.response(); g != "OK group=alice" {
+		t.Fatalf("GROUP JOIN = %q", g)
+	}
+	alice.waitEvent("EVT GROUP JOIN bob")
+
+	// group chat reaches bob
+	alice.send("CHAT GROUP hello team")
+	if g := alice.response(); g != "OK" {
+		t.Fatalf("CHAT GROUP = %q", g)
+	}
+	bob.waitEvent("EVT GROUP CHAT alice hello team")
+
+	// bob leaves → alice sees the leave
+	bob.send("GROUP LEAVE")
+	if g := bob.response(); g != "OK left" {
+		t.Fatalf("GROUP LEAVE = %q", g)
+	}
+	alice.waitEvent("EVT GROUP LEAVE bob")
+
+	// bob is no longer in a group
+	bob.send("CHAT GROUP anyone?")
+	if g := bob.response(); g != "ERR 401 NOT_IN_GROUP" {
+		t.Fatalf("CHAT GROUP after leave = %q", g)
+	}
+}
+
+// questWorld is a one-room world with a quest-giver, the fetch target item, and
+// the reward item in the catalog.
+func questWorld() *game.World {
+	return &game.World{
+		Rooms: map[string]*game.Room{
+			"loc.square": {ID: "loc.square", Name: "Square", Description: "a square",
+				Exits: map[string]string{},
+				Items: map[string]*game.Item{
+					"item.herbs": {ID: "item.herbs", Name: "Healing Herbs"},
+				},
+				NPCs: map[string]*game.NPC{
+					"npc.elder": {ID: "npc.elder", Name: "Elder", Role: "quest-giver", QuestID: "quest.herbs"},
+				},
+				Players: map[string]*game.Player{}},
+		},
+		Players:   map[string]*game.Player{},
+		StartRoom: "loc.square",
+		Quests: map[string]*game.QuestDef{
+			"quest.herbs": {ID: "quest.herbs", Description: "Bring herbs", Type: "fetch", TargetID: "item.herbs", Reward: "item.gold"},
+		},
+		Items: map[string]*game.Item{
+			"item.herbs": {ID: "item.herbs", Name: "Healing Herbs"},
+			"item.gold":  {ID: "item.gold", Name: "Gold"},
+		},
+	}
+}
+
+func TestQuestFlow(t *testing.T) {
+	addr := startServer(t, questWorld())
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+
+	// request the quest from the elder
+	alice.send("QUEST Elder")
+	if g := alice.response(); !strings.Contains(g, `"quest_id":"quest.herbs"`) || !strings.Contains(g, `"type":"fetch"`) {
+		t.Fatalf("QUEST = %q", g)
+	}
+
+	// it shows as active
+	alice.send("QUESTS")
+	if g := alice.response(); !strings.Contains(g, `"quest.herbs"`) || !strings.Contains(g, `"status":"active"`) {
+		t.Fatalf("QUESTS active = %q", g)
+	}
+
+	// asking again → no quest available
+	alice.send("QUEST Elder")
+	if g := alice.response(); g != "ERR 406 NO_QUEST_AVAILABLE" {
+		t.Fatalf("QUEST again = %q", g)
+	}
+
+	// do the objective: pick up the herbs
+	alice.send("TAKE Healing Herbs")
+	if g := alice.response(); g != "OK took item.herbs" {
+		t.Fatalf("TAKE = %q", g)
+	}
+
+	// QUESTS now completes it and grants the reward
+	alice.send("QUESTS")
+	if g := alice.response(); !strings.Contains(g, `"status":"completed"`) {
+		t.Fatalf("QUESTS completed = %q", g)
+	}
+	alice.send("INVENTORY")
+	if g := alice.response(); !strings.Contains(g, `"id":"item.gold"`) {
+		t.Fatalf("reward not in inventory: %q", g)
+	}
+}
 
 func TestDuplicateName(t *testing.T) {
 	addr := newTestServer(t)

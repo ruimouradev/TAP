@@ -11,7 +11,6 @@ const (
 	ErrCodeNPCNotFound      = 404
 	ErrCodeNPCNotHostile    = 405
 	ErrCodeNoQuestAvailable = 406
-	ErrCodeConnectionFailed = 900
 	ErrCodeSendFailed       = 901
 )
 
@@ -26,6 +25,5 @@ const (
 	MsgNPCNotFound      = "NPC_NOT_FOUND"
 	MsgNPCNotHostile    = "NPC_NOT_HOSTILE"
 	MsgNoQuestAvailable = "NO_QUEST_AVAILABLE"
-	MsgConnectionFailed = "CONNECTION_FAILED"
 	MsgSendFailed       = "SEND_FAILED"
 )

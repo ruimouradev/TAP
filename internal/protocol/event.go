@@ -36,6 +36,12 @@ func GroupChat(username, message string) string {
 	return fmt.Sprintf("EVT GROUP CHAT %s %s\n", username, message)
 }
 
+// RoomCombat announces one combat round to the other players in the room.
+// Combat events are not in the RFC's category list; documented as a deviation.
+func RoomCombat(attacker, target string, damage, targetHP int) string {
+	return fmt.Sprintf("EVT ROOM COMBAT %s %s %d %d\n", attacker, target, damage, targetHP)
+}
+
 func StatsPlayers(count int) string {
 	return fmt.Sprintf("EVT STATS players=%d\n", count)
 }
