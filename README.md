@@ -25,25 +25,23 @@ make clean          # remove build artifacts
 
 ## Architecture
 
-> [!WARNING]
-> **TODO (rusilva-)** — Explain the Hub/Actor concurrency model vs the mutex approach, the goroutine-per-client design, the dispatcher map, and why no mutexes are needed on the World structs.
-
-The server uses a Hub/Actor pattern: a single goroutine owns all mutable world state (`internal/server/hub.go`). Client goroutines communicate with the Hub exclusively via channels — they never touch the world directly. This eliminates race conditions on game state without a single mutex.
+The server uses a **Hub/Actor** pattern: a single goroutine (the Hub, `internal/server/hub.go`) owns all mutable world state. Client goroutines communicate with the Hub exclusively via channels — they never touch the world directly. Because the Hub processes one event at a time, race conditions on game state are impossible **without a single mutex**. (The alternative — guarding every `World`/`Room`/`Player` access with locks — is easy to get subtly wrong and hard to reason about; the actor model trades that for one clear ownership rule.)
 
 Each connected client runs two goroutines:
-- **readPump** — reads lines from the TCP socket, forwards `Command` structs to the Hub
-- **writePump** — drains a buffered `send` channel and writes responses/events to the socket
+- **readPump** — reads lines from the TCP socket, parses them, and forwards `Command` structs to the Hub over the `commands` channel.
+- **writePump** — drains a buffered `send` channel and writes responses/events to the socket.
 
-The Hub's `select {}` loop processes register/unregister/command events one at a time, calling the appropriate handler from a `verb → HandlerFunc` dispatch map.
+The Hub's `select {}` loop handles `register` / `unregister` / `command` events one at a time. Commands are routed through a `verb → HandlerFunc` map (`internal/server/dispatch.go`); since handlers run inside the Hub goroutine, they read and mutate `h.world` directly with no locking.
+
+Back-pressure is handled by `safeSend`: the per-client `send` channel is buffered, and if it ever fills (a client too slow to drain) the Hub drops that connection instead of blocking — one slow client can never stall the whole server. Shutdown is graceful via `signal.NotifyContext` (Ctrl+C stops accepting and exits cleanly).
+
+Layering: `internal/protocol` is the wire contract (parsing + formatting, no game logic), `internal/game` holds the world rules (no networking), and `internal/server` glues the two — handlers translate protocol ↔ game. This keeps the game logic unit-testable without a socket.
 
 ---
 
 ## Protocol Implementation
 
-> [!WARNING]
-> **TODO (rusilva-)** — Document all deviations from RFC 42TAP with justification. Also document the scanner buffer size choice and max line length.
-
-This implementation follows RFC 42TAP. Known deviations:
+This implementation follows RFC 42TAP. Messages are line-based (`\n`-terminated, UTF-8). Known deviations:
 
 | Command | RFC / V.5 example | Our response | Reason |
 |---------|-------------------|--------------|--------|
@@ -57,33 +55,44 @@ All deviations remain ABNF-compliant: the RFC's `response-data` production is `1
 
 For interoperability with other groups' servers that follow the V.5 example formats, the GUI parses both shapes (plain ID string OR `{id, name}` object) inside `cmd/gui/main.go` (in the LOOK/INVENTORY response handlers) and normalises them before rendering.
 
+**Error code extension.** The RFC (§8.2) defines codes for game errors (201, 301, 401, 402, 404, 405, 406), which we follow exactly. For input the RFC does not define — unknown verb, command before `CONNECT`, missing arguments — we return `ERR 400 <reason>` (e.g. `UNKNOWN_COMMAND`, `NOT_CONNECTED`, `MISSING_ITEM`). `400` is our extension; the RFC only states malformed messages should yield an appropriate error.
+
+**Line handling.** Each connection is read with a `bufio.Scanner` whose buffer starts at 64&nbsp;KB and grows up to a **1&nbsp;MB** maximum line length, so very long (but valid) lines are accepted while a single unbounded line cannot exhaust memory. The protocol tolerates `CRLF` (a trailing `\r` is trimmed) and ignores blank lines.
+
 ---
 
 ## Combat System
 
-> [!WARNING]
-> **TODO (rusilva-)** — Document the damage formula, initiative order, and any extra commands implemented (DEFEND, FLEE). Fill in the placeholders below.
+Players start at **100 HP**. Combat lives in `internal/game/combat.go`.
 
-Design decisions:
-
-- **Turn model**: each `ATTACK` command is one round; no persistent "in combat" state.
-- **Damage formula**: `TODO — define and document here`
-- **Counter-attack**: the NPC retaliates automatically each round unless defeated.
-- **Defeat**: player HP reaches 0 → respawn at start room with 50% MaxHP.
-- **Extra commands**: `TODO — DEFEND, FLEE (if implemented)`
+- **Turn model**: each `ATTACK <npc>` command resolves **one round** — there is no persistent "in combat" state, so any other command is valid between rounds. This keeps the server stateless per-action and avoids tracking combat sessions or timeouts.
+- **Damage formula**: each hit deals a uniform random amount in **`[10, 20]`** (`calculateDamage()`). Players and NPCs have no separate attack/defense stats, so the formula is deliberately simple; difficulty is tuned by changing the range (`minDamage`/`maxDamage`).
+- **Initiative**: the player always strikes first. If the NPC survives, it **counter-attacks** in the same round (also `[10, 20]`); if the NPC is defeated, there is no counter-attack.
+- **Targets**: only **hostile** NPCs can be attacked — attacking a non-hostile NPC returns `ERR 405 NPC_NOT_HOSTILE`; an absent NPC returns `ERR 404 NPC_NOT_FOUND`.
+- **Defeat & respawn**: when a player's HP reaches 0 they **respawn at the start room with 50% of MaxHP** (`RespawnPlayer`). The defeat is reported in the `ATTACK` response (`"status":"defeat"`); the client refreshes HP with `STATUS`.
+- **Extra commands**: none — `DEFEND`/`FLEE` were considered but left out to keep the system minimal (not required by the RFC).
+- The `ATTACK` response is JSON: `{damage, counter, attacker_hp, target_hp, status}` where `status` is `combat` | `victory` | `defeat`.
 
 ---
 
 ## Quest System
 
-> [!WARNING]
-> **TODO (rusilva-)** — Document quest progression (NotStarted → Active → Completed), completion validation (auto vs manual), and reward distribution.
+Quests live in `internal/game/quest.go`. Two types are implemented (the RFC lists `deliver` too, which we did not implement — two distinct types is the requirement):
 
-Supported quest types: `fetch` (bring item), `defeat` (kill NPC), `deliver` (give item to NPC).
+- **`fetch`** — objective met when the target item is in the player's inventory.
+- **`defeat`** — objective met when the player has defeated the target NPC.
 
-State machine per player per quest: `NotStarted → Active → Completed`.
+**State per player.** Quest *definitions* are shared (`World.Quests`, loaded from `world.json`), but each player keeps their own progress (`Player.Quests`), with the state machine `NotStarted → Active → Completed` (not present in the map = NotStarted).
 
-Completion is validated automatically when the player sends the relevant command (TAKE the target item, or after the NPC is defeated). Rewards are added directly to the player's inventory.
+**Flow.**
+- `QUEST <npc>` asks a quest-giver NPC for its quest. If the NPC has one and the player hasn't already started/finished it, the quest becomes `Active`; otherwise `ERR 406 NO_QUEST_AVAILABLE`.
+- `QUESTS` lists the player's quests. **Completion is checked lazily here**: any active quest whose objective is now met is marked `Completed` and its reward granted at that moment. (Lazy checking avoids watching the inventory/combat in real time — we validate when the player asks.)
+
+**Defeat tracking.** To validate `defeat` objectives per player, the combat code records each kill in `Player.Defeated` (a set of npcIDs); `defeat` completion simply checks that set — so a kill by another player doesn't complete your quest.
+
+**Rewards.** The reward is an item ID. On completion it is copied from the world item catalog (`World.Items`) into the player's inventory (with its proper display name).
+
+World quests: `quest.fetch_herbs` (from the Baker → reward `item.bread`) and `quest.defeat_goblin_chief` (from the Goblin Chief → reward `item.rusty_sword`).
 
 ---
 
@@ -114,25 +123,32 @@ Quests: `fetch_herbs` (Baker), `defeat_goblin_chief` (Goblin Chief).
 
 ## Server Logging
 
-> [!WARNING]
-> **TODO (rusilva-)** — Document the exact log format (JSON fields), log levels used, output stream, and the thresholds chosen for abuse detection.
+Uses Go's `log/slog` with a **JSON handler**, written to **stdout** (redirect with `> server.log`). Every line carries an automatic `time` and a `level`. One line per event makes the log easy to filter (`grep`/`jq`).
 
-Uses Go's `log/slog` with a JSON handler. All logs go to stdout.
+| Event | `msg` | Level | Fields |
+|-------|-------|-------|--------|
+| Connection | `client connected` | INFO | `addr` |
+| Disconnection | `client disconnected` | INFO | `addr`, `user` |
+| Command received | `command` | INFO | `user`, `verb`, `args` |
+| Response sent | `response` | INFO / **WARN** if `ERR` | `user`, `verb`, `resp` |
+| Unknown verb | `unknown command` | WARN | `user`, `verb` |
+| Item moved | `item taken` / `item dropped` | INFO | `user`, `item`, `room` |
+| Combat result | `combat` | INFO | `user`, `target`, `damage`, `counter`, `status` |
+| Group change | `group created/joined/left` | INFO | `user`, `group` |
+| Quest event | `quest started` / `quest completed` | INFO | `user`, `quest`, `reward` |
+| Abuse (flooding) | `possible command flood` | **WARN** | `user`, `addr`, `count`, `window` |
+| Startup / fatal | `server listening`, `load world`, … | INFO / ERROR | `addr`, `err` |
 
-| Event | Level | Fields |
-|-------|-------|--------|
-| Client connected | INFO | `ip`, `timestamp` |
-| Client disconnected | INFO | `player`, `ip`, `reason` |
-| Command received | INFO | `player`, `verb`, `args` |
-| Response sent | INFO | `player`, `status`, `code` |
-| Item moved | INFO | `item`, `from`, `to`, `player` |
-| NPC interaction | INFO | `npc`, `player`, `type` |
-| Combat result | INFO | `attacker`, `target`, `damage`, `result` |
-| Quest event | INFO | `player`, `quest`, `event` |
-| Abuse detected | WARN | `ip`, `player`, `pattern` |
+**Log levels**: INFO for normal activity, **WARN** for error responses and abuse, **ERROR** for fatal startup failures.
 
-> [!WARNING]
-> **TODO (rusilva-)** — Define the rate-limit thresholds (commands per second, rapid reconnections) used to detect and log abuse patterns.
+**Abuse detection** (`trackFlood`, `internal/server/dispatch.go`): each client's commands are counted in a sliding **1-second window**; more than **20 commands** in a window logs one `possible command flood` WARN. We *monitor and log* rather than disconnect (the spec asks for monitoring). Rapid reconnections are observable through the `client connected` lines (each carries the IP and timestamp); automatic per-IP reconnection detection is not implemented.
+
+Example output:
+```json
+{"time":"2026-06-17T00:43:43Z","level":"INFO","msg":"client connected","addr":"127.0.0.1:57164"}
+{"time":"2026-06-17T00:43:43Z","level":"INFO","msg":"command","user":"alice","verb":"MOVE","args":["north"]}
+{"time":"2026-06-17T00:43:43Z","level":"WARN","msg":"response","user":"alice","verb":"TAKE","resp":"ERR 404 ITEM_NOT_FOUND"}
+```
 
 ---
 
