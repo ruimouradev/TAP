@@ -126,10 +126,11 @@ func main() {
 		container.NewVBox(
 			buildChatPanel(),
 			buildInventoryPanel(),
+			buildInteractionPanel(),
 		),
 	)
 	//  container.NewBorder(top, bottom, left, right, center)
-	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(conn), nil, nil, mainCenter))
+	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(w, conn), nil, nil, mainCenter))
 
 	// Use Run instead of ShowAndRun since we already called w.Show() to display the dialog
 	a.Run()
@@ -203,20 +204,27 @@ var (
 	roomNameValue        *widget.Label
 	roomDescriptionValue *widget.Label
 	roomExitsValue       *widget.Label
-	roomItemsValue       *widget.Label
-	roomNPCsValue        *widget.Label
+	roomItemsList        *widget.List
+	roomNPCsList         *widget.List
 	roomPlayersValue     *widget.Label
 	chatGlobalLog        *widget.Entry
 	chatRoomLog          *widget.Entry
 	chatGroupLog         *widget.Entry
 	chatInput            *widget.Entry
+	interactionLog       *widget.Label
+	interactionScroll    *container.Scroll
+	roomItemsData        []protocol.LookItem
+	roomNPCsData         []protocol.LookNPC
 	inventoryItems       *widget.List
 	inventorySelected    *widget.Label
 	statusHPValue        *widget.Label
 	statusServerValue    *widget.Label
 	statusRoomValue      *widget.Label
 	moveButtonsContainer *fyne.Container // New: Container for dynamic move buttons
-	inventoryData        []string
+	inventoryData        []protocol.InventoryItem
+	selectedRoomItemID   string
+	selectedNPCID        string
+	selectedItemID       string
 )
 
 // buildRoomPanel returns the widget that shows the current room's name,
@@ -235,11 +243,37 @@ func buildRoomPanel() fyne.CanvasObject {
 	roomExitsValue = widget.NewLabel("--")
 	roomExitsValue.Wrapping = fyne.TextWrapWord
 
-	roomItemsValue = widget.NewLabel("--")
-	roomItemsValue.Wrapping = fyne.TextWrapWord
+	roomItemsList = widget.NewList(
+		func() int { return len(roomItemsData) },
+		func() fyne.CanvasObject { return widget.NewLabel("item") },
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(roomItemsData[i].Name)
+		},
+	)
+	roomItemsList.OnSelected = func(id widget.ListItemID) {
+		if id >= 0 && id < len(roomItemsData) {
+			selectedRoomItemID = roomItemsData[id].ID
+		}
+	}
+	// We give the list a minimum height so it is visible in the VBox
+	roomItemsScroll := container.NewVScroll(roomItemsList)
+	roomItemsScroll.SetMinSize(fyne.NewSize(0, 100))
 
-	roomNPCsValue = widget.NewLabel("--")
-	roomNPCsValue.Wrapping = fyne.TextWrapWord
+	roomNPCsList = widget.NewList(
+		func() int { return len(roomNPCsData) },
+		func() fyne.CanvasObject { return widget.NewLabel("npc") },
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(roomNPCsData[i].Name)
+		},
+	)
+	roomNPCsList.OnSelected = func(id widget.ListItemID) {
+		if id >= 0 && id < len(roomNPCsData) {
+			selectedNPCID = roomNPCsData[id].ID
+		}
+	}
+	// We give the list a minimum height so it is visible in the VBox
+	roomNPCsScroll := container.NewVScroll(roomNPCsList)
+	roomNPCsScroll.SetMinSize(fyne.NewSize(0, 100))
 
 	roomPlayersValue = widget.NewLabel("--")
 	roomPlayersValue.Wrapping = fyne.TextWrapWord
@@ -256,9 +290,9 @@ func buildRoomPanel() fyne.CanvasObject {
 		roomExitsValue,       // This shows the text list of exits
 		moveButtonsContainer, // This will hold the buttons for each exit
 		widget.NewLabelWithStyle("Items", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		roomItemsValue,
+		roomItemsScroll,
 		widget.NewLabelWithStyle("NPCs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		roomNPCsValue,
+		roomNPCsScroll,
 		widget.NewLabelWithStyle("Players in room", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		roomPlayersValue,
 	)
@@ -319,10 +353,21 @@ func buildChatPanel() fyne.CanvasObject {
 	return widget.NewCard("Chat", "Global / room / group chat", container.NewVBox(tabs, inputRow))
 }
 
+// buildInteractionPanel returns a panel for NPC dialogues and combat feedback.
+func buildInteractionPanel() fyne.CanvasObject {
+	interactionLog = widget.NewLabel("Interaction details will appear here...")
+	interactionLog.SetText("Interaction details will appear here...")
+	interactionLog.Wrapping = fyne.TextWrapWord
+
+	interactionScroll = container.NewVScroll(interactionLog)
+	interactionScroll.SetMinSize(fyne.NewSize(0, 150))
+	return widget.NewCard("Interaction", "Dialogue & Combat feedback", interactionScroll)
+}
+
 // buildInventoryPanel returns the inventory list + a DROP button bound
 // to the currently selected item.
 func buildInventoryPanel() fyne.CanvasObject {
-	inventoryData = []string{"Waiting for INVENTORY..."}
+	inventoryData = []protocol.InventoryItem{}
 	inventorySelected = widget.NewLabel("Selected item: --")
 	inventorySelected.Wrapping = fyne.TextWrapWord
 
@@ -330,46 +375,82 @@ func buildInventoryPanel() fyne.CanvasObject {
 		func() int { return len(inventoryData) },
 		func() fyne.CanvasObject { return widget.NewLabel("item") },
 		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(inventoryData[i])
+			o.(*widget.Label).SetText(inventoryData[i].Name)
 		},
 	)
 
 	inventoryItems.OnSelected = func(id widget.ListItemID) {
 		if id >= 0 && id < len(inventoryData) {
-			inventorySelected.SetText(fmt.Sprintf("Selected item: %s", inventoryData[id]))
+			selectedItemID = inventoryData[id].ID
+			inventorySelected.SetText(fmt.Sprintf("Selected item: %s", inventoryData[id].Name))
 		}
 	}
 
+	inventoryItemsScroll := container.NewVScroll(inventoryItems)
+	inventoryItemsScroll.SetMinSize(fyne.NewSize(0, 75)) // Height for ~3 lines
+
 	dropButton := widget.NewButton("DROP", func() {
-		item := strings.TrimPrefix(inventorySelected.Text, "Selected item: ")
-		if item != "--" && item != "" {
-			logCommand(sendCommand(globalConn, "DROP", item))
+		if selectedItemID != "" {
+			logCommand(sendCommand(globalConn, "DROP", selectedItemID))
 		}
 	})
 
 	content := container.NewVBox(
-		widget.NewLabelWithStyle("Inventory", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		inventoryItemsScroll,
 		inventorySelected,
-		inventoryItems,
 		dropButton,
 	)
 
 	return widget.NewCard("Inventory", "Your carried items", content)
 }
 
+func promptAndSend(parent fyne.Window, conn net.Conn, title, placeholder, verb string) {
+	entry := widget.NewEntry()
+	entry.SetPlaceHolder(placeholder)
+
+	d := dialog.NewForm(title, "Send", "Cancel", []*widget.FormItem{
+		{Text: "Target", Widget: entry},
+	}, func(ok bool) {
+		if !ok {
+			return
+		}
+		value := strings.TrimSpace(entry.Text)
+		if value == "" {
+			return
+		}
+		logCommand(sendCommand(conn, verb, value))
+	}, parent)
+	d.Show()
+}
+
 // buildActionBar returns the row of buttons that map 1:1 to protocol
 // verbs (LOOK, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS).
 // Each button calls sendCommand with the appropriate verb.
-func buildActionBar(conn net.Conn) fyne.CanvasObject {
+func buildActionBar(parent fyne.Window, conn net.Conn) fyne.CanvasObject {
 	return container.NewHBox(
 		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }), // LOOK button remains
 		// MOVE buttons are now dynamically generated in the room panel
-		widget.NewButton("TAKE", func() { logCommand(sendCommand(conn, "TAKE", "item")) }),
-		widget.NewButton("DROP", func() { logCommand(sendCommand(conn, "DROP", "item")) }),
-		widget.NewButton("TALK", func() { logCommand(sendCommand(conn, "TALK", "npc")) }),
-		widget.NewButton("ATTACK", func() { logCommand(sendCommand(conn, "ATTACK", "npc")) }),
+		widget.NewButton("TAKE", func() {
+			if selectedRoomItemID != "" {
+				logCommand(sendCommand(conn, "TAKE", selectedRoomItemID))
+			}
+		}),
+		widget.NewButton("TALK", func() {
+			if selectedNPCID != "" {
+				logCommand(sendCommand(conn, "TALK", selectedNPCID))
+			}
+		}),
+		widget.NewButton("ATTACK", func() {
+			if selectedNPCID != "" {
+				logCommand(sendCommand(conn, "ATTACK", selectedNPCID))
+			}
+		}),
 		widget.NewButton("STATUS", func() { logCommand(sendCommand(conn, "STATUS")) }),
-		widget.NewButton("QUEST", func() { logCommand(sendCommand(conn, "QUEST")) }),
+		widget.NewButton("QUEST", func() {
+			if selectedNPCID != "" {
+				logCommand(sendCommand(conn, "QUEST", selectedNPCID))
+			}
+		}),
 		widget.NewButton("QUESTS", func() { logCommand(sendCommand(conn, "QUESTS")) }),
 	)
 }
@@ -445,6 +526,17 @@ func applyResponse(line string) {
 	case "CONNECT":
 		// Once connected, sync the UI state immediately
 		logCommand(sendCommand(globalConn, "LOOK"))
+	case "TAKE", "DROP":
+		if lastSentVerb == "DROP" {
+			inventoryItems.UnselectAll()
+			inventorySelected.SetText("Selected item: --")
+			selectedItemID = ""
+		}
+		if lastSentVerb == "TAKE" {
+			roomItemsList.UnselectAll()
+			selectedRoomItemID = ""
+		}
+		logCommand(sendCommand(globalConn, "LOOK"))
 	case "LOOK":
 		var data protocol.LookResponse
 		if err := json.Unmarshal([]byte(payload), &data); err == nil {
@@ -458,26 +550,20 @@ func applyResponse(line string) {
 			roomExitsValue.SetText(strings.Join(exits, ", "))
 			statusRoomValue.SetText("Room: " + data.Room.ID)
 
-			items := []string{}
-			for _, item := range data.Items {
-				items = append(items, item.Name)
-			}
-			roomItemsValue.SetText(strings.Join(items, ", "))
+			roomItemsData = data.Items
+			roomItemsList.UnselectAll()
+			roomItemsList.Refresh()
 
-			npcs := []string{}
-			for _, npc := range data.NPCs {
-				npcs = append(npcs, npc.Name)
-			}
-			roomNPCsValue.SetText(strings.Join(npcs, ", "))
+			roomNPCsData = data.NPCs
+			roomNPCsList.UnselectAll()
+			roomNPCsList.Refresh()
+
 			roomPlayersValue.SetText(strings.Join(data.Players, ", "))
 
 			updateMoveButtons(data.Room.Exits)
 
-			// After a successful LOOK, update secondary info if it's the first time
-			if statusHPValue.Text == "HP: --" {
-				logCommand(sendCommand(globalConn, "STATUS"))
-				logCommand(sendCommand(globalConn, "INVENTORY"))
-			}
+			// Chain refresh: LOOK success triggers INVENTORY sync
+			logCommand(sendCommand(globalConn, "INVENTORY"))
 		}
 	case "STATUS":
 		var data protocol.StatusResponse
@@ -487,31 +573,61 @@ func applyResponse(line string) {
 	case "INVENTORY":
 		var items []protocol.InventoryItem
 		if err := json.Unmarshal([]byte(payload), &items); err == nil {
-			inventoryData = nil
-			for _, itm := range items {
-				inventoryData = append(inventoryData, itm.Name)
-			}
+			inventoryData = items
 			inventoryItems.Refresh()
+			// Chain refresh: INVENTORY success triggers STATUS sync
+			logCommand(sendCommand(globalConn, "STATUS"))
 		}
 	case "ATTACK":
 		var data protocol.AttackResponse
 		if err := json.Unmarshal([]byte(payload), &data); err == nil {
 			formatted := fmt.Sprintf("[Combat] You dealt %d damage. Target HP: %d/%d. Status: %s\n",
 				data.Damage, data.TargetHP, data.TargetHP+data.Damage, data.Status) // Simplified calculation for display
+			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
 			if data.Counter > 0 {
 				formatted += fmt.Sprintf("[Combat] NPC countered for %d damage! Your HP: %d\n", data.Counter, data.AttackerHP)
 			}
-			chatRoomLog.SetText(chatRoomLog.Text + formatted)
-			scrollBottom(chatRoomLog)
+			interactionLog.SetText(currentText + formatted)
+			interactionScroll.ScrollToBottom()
 			// Also refresh status bar HP
 			statusHPValue.SetText(fmt.Sprintf("HP: %d/--", data.AttackerHP))
+
+			roomNPCsList.UnselectAll()
+			selectedNPCID = ""
 		}
 	case "TALK":
 		var data protocol.TalkResponse
 		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
 			formatted := fmt.Sprintf("[%s]: \"%s\"\n", data.NPC, data.Dialogue)
-			chatRoomLog.SetText(chatRoomLog.Text + formatted)
-			scrollBottom(chatRoomLog)
+			interactionLog.SetText(currentText + formatted)
+			interactionScroll.ScrollToBottom()
+
+			roomNPCsList.UnselectAll()
+			selectedNPCID = ""
+		}
+	case "QUEST":
+		var data protocol.QuestResponse
+		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+			formatted := fmt.Sprintf("[Quest] %s\nTarget: %s\nReward: %s\nDesc: %s\n",
+				data.QuestID, data.Target, data.Reward, data.Description)
+			interactionLog.SetText(currentText + formatted)
+			interactionScroll.ScrollToBottom()
+
+			roomNPCsList.UnselectAll()
+			selectedNPCID = ""
+		}
+	case "QUESTS":
+		var data []protocol.QuestsEntry
+		if err := json.Unmarshal([]byte(payload), &data); err == nil {
+			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+			formatted := "Your Quests:\n"
+			for _, q := range data {
+				formatted += fmt.Sprintf("- [%s] %s: %s\n", q.State, q.QuestID, q.Description)
+			}
+			interactionLog.SetText(currentText + formatted)
+			interactionScroll.ScrollToBottom()
 		}
 	}
 }
