@@ -42,28 +42,63 @@ type PlayerQuest struct {
 // ErrNoQuestAvailable is returned when an NPC has no quest for this player.
 var ErrNoQuestAvailable = errors.New("no quest available")
 
-// GetQuestFromNPC returns the QuestDef for npcName if a quest is available
-// for this player (not already active or completed). Returns ErrNoQuestAvailable otherwise.
-func GetQuestFromNPC(player *Player, room *Room, npcName string) (*QuestDef, error) {
-	return nil, nil // TODO: implement
+// GetQuestFromNPC returns the quest offered by the named NPC in room, if the
+// player can take it (the NPC is a quest-giver and the player hasn't started or
+// finished that quest yet). Otherwise returns ErrNoQuestAvailable.
+func GetQuestFromNPC(world *World, player *Player, room *Room, npcName string) (*QuestDef, error) {
+	npc, ok := findNPC(room, npcName)
+	if !ok || npc.QuestID == "" {
+		return nil, ErrNoQuestAvailable
+	}
+	if _, already := player.Quests[npc.QuestID]; already {
+		return nil, ErrNoQuestAvailable // already active or completed
+	}
+	def := world.Quests[npc.QuestID]
+	if def == nil {
+		return nil, ErrNoQuestAvailable
+	}
+	return def, nil
 }
 
-// StartQuest activates a quest for the player, setting its state to Active.
+// StartQuest activates a quest for the player (state Active).
 func StartQuest(player *Player, def *QuestDef) {
-	// TODO: implement
+	player.Quests[def.ID] = &PlayerQuest{Def: def, State: QuestActive}
 }
 
-// CheckCompletion returns true if the player has fully met the quest's objectives.
+// CheckCompletion reports whether the player has met the quest's objective.
+//   - "fetch":  the target item is in the player's inventory
+//   - "defeat": the player has defeated the target NPC
 func CheckCompletion(player *Player, pq *PlayerQuest) bool {
-	return false // TODO: implement
+	switch pq.Def.Type {
+	case "fetch":
+		_, has := player.Inventory[pq.Def.TargetID]
+		return has
+	case "defeat":
+		return player.Defeated[pq.Def.TargetID]
+	default:
+		return false
+	}
 }
 
-// CompleteQuest finalises the quest: grants the reward item and sets state to Completed.
+// CompleteQuest marks the quest completed and grants its reward item (if any).
 func CompleteQuest(world *World, player *Player, pq *PlayerQuest) error {
-	return nil // TODO: implement
+	pq.State = QuestCompleted
+	if pq.Def.Reward == "" {
+		return nil
+	}
+	reward, ok := world.Items[pq.Def.Reward]
+	if !ok {
+		return nil // reward item not in the catalog; nothing to grant
+	}
+	player.Inventory[reward.ID] = &Item{ID: reward.ID, Name: reward.Name}
+	return nil
 }
 
 // ListQuests returns all of the player's quests (active and completed).
 func ListQuests(player *Player) []*PlayerQuest {
-	return nil // TODO: implement
+	out := make([]*PlayerQuest, 0, len(player.Quests))
+	for _, pq := range player.Quests {
+		out = append(out, pq)
+	}
+	return out
 }
