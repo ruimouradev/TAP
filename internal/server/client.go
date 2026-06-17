@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"time"
 
 	"the-answer-protocol/internal/protocol"
 )
@@ -16,11 +17,17 @@ const sendBufferSize = 32
 
 // Client represents a single connected player's TCP connection.
 type Client struct {
-	conn     net.Conn
-	hub      *Hub
-	send     chan string // buffered; writePump drains it
-	username string      // empty before CONNECT succeeds
-	log      *slog.Logger
+	conn         net.Conn
+	hub          *Hub
+	send         chan string // buffered; writePump drains it
+	username     string      // empty before CONNECT succeeds
+	invitedGroup string      // pending group invite (group ID), empty if none
+	addr         string      // remote IP:port, kept for logging after close
+	log          *slog.Logger
+
+	// flood detection (only touched inside the Hub goroutine, so no lock)
+	cmdCount    int
+	windowStart time.Time
 }
 
 func newClient(conn net.Conn, hub *Hub, log *slog.Logger) *Client {
@@ -28,6 +35,7 @@ func newClient(conn net.Conn, hub *Hub, log *slog.Logger) *Client {
 		conn: conn,
 		hub:  hub,
 		send: make(chan string, sendBufferSize),
+		addr: conn.RemoteAddr().String(),
 		log:  log,
 	}
 }

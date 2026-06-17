@@ -63,6 +63,7 @@ func (h *Hub) Run() {
 		select {
 		case c := <-h.register:
 			h.clients[c] = true
+			h.log.Info("client connected", "addr", c.addr)
 			c.safeSend(protocol.OKf("hello proto=%d", 1))
 
 		case c := <-h.unregister:
@@ -70,6 +71,7 @@ func (h *Hub) Run() {
 				h.removeClient(c) // remove state + broadcast LEAVE
 				delete(h.clients, c)
 				close(c.send) // ends writePump
+				h.log.Info("client disconnected", "addr", c.addr, "user", c.username)
 			}
 
 		case ic := <-h.commands:
@@ -113,10 +115,55 @@ func (h *Hub) removeClient(c *Client) {
 	if p == nil {
 		return
 	}
+	if p.GroupID != "" {
+		h.leaveGroup(c, p)
+	}
 	roomID := p.CurrentRoom
 	h.world.RemovePlayer(c.username)
 	h.broadcast(roomID, protocol.RoomPresenceLeave(c.username), c)
 	h.updatePlayerCount()
+}
+
+// clientByUsername returns the connected client with username, or nil.
+func (h *Hub) clientByUsername(username string) *Client {
+	for c := range h.clients {
+		if c.username == username {
+			return c
+		}
+	}
+	return nil
+}
+
+// broadcastGroup sends msg to every member of grp, skipping exclude.
+func (h *Hub) broadcastGroup(grp *Group, msg string, exclude *Client) {
+	for _, m := range grp.Members {
+		if m == exclude {
+			continue
+		}
+		m.safeSend(msg)
+	}
+}
+
+// leaveGroup removes c from their group and announces it to the rest. If the
+// leader leaves or the group becomes empty, the whole group is disbanded.
+func (h *Hub) leaveGroup(c *Client, p *game.Player) {
+	grp := h.groups[p.GroupID]
+	p.GroupID = ""
+	if grp == nil {
+		return
+	}
+	delete(grp.Members, c.username)
+	if grp.Leader == c.username || len(grp.Members) == 0 {
+		for name, m := range grp.Members {
+			if mp := h.world.GetPlayer(name); mp != nil {
+				mp.GroupID = ""
+			}
+			m.safeSend(protocol.GroupLeave(c.username))
+		}
+		delete(h.groups, grp.ID)
+		return
+	}
+	h.broadcastGroup(grp, protocol.GroupLeave(c.username), nil)
 }
 
 // updatePlayerCount tells everyone the current player total.
