@@ -4,6 +4,7 @@ package server
 
 import (
 	"strings"
+	"time"
 
 	"the-answer-protocol/internal/game"
 	"the-answer-protocol/internal/protocol"
@@ -17,8 +18,19 @@ type HandlerFunc func(h *Hub, c *Client, args []string) string
 // connected, missing args). Documented in the README as our extension.
 const errBadRequest = 400
 
-// dispatch routes cmd to its handler and sends the response to c.
+// Flood detection: more than floodLimit commands from one client within
+// floodWindow is logged as a possible abuse pattern (we monitor, not block).
+const (
+	floodWindow = time.Second
+	floodLimit  = 20
+)
+
+// dispatch routes cmd to its handler and sends the response to c. Every command
+// and response is logged; flooding is tracked for abuse monitoring.
 func (h *Hub) dispatch(c *Client, cmd protocol.Command) {
+	h.trackFlood(c)
+	h.log.Info("command", "user", c.username, "verb", cmd.Verb, "args", cmd.Args)
+
 	handlers := map[string]HandlerFunc{
 		"CONNECT":   handleConnect,
 		"LOOK":      handleLook,
@@ -32,14 +44,40 @@ func (h *Hub) dispatch(c *Client, cmd protocol.Command) {
 		"TALK":      handleTalk,
 		"ATTACK":    handleAttack,
 		"STATUS":    handleStatus,
+		"GROUP":     handleGroup,
+		"QUEST":     handleQuest,
+		"QUESTS":    handleQuests,
 	}
 	handler, ok := handlers[cmd.Verb]
 	if !ok {
+		h.log.Warn("unknown command", "user", c.username, "verb", cmd.Verb)
 		c.safeSend(protocol.Errf(errBadRequest, "UNKNOWN_COMMAND"))
 		return
 	}
-	if resp := handler(h, c, cmd.Args); resp != "" {
-		c.safeSend(resp)
+	resp := handler(h, c, cmd.Args)
+	if resp == "" {
+		return
+	}
+	c.safeSend(resp)
+	// log the outcome; errors at WARN so they stand out
+	if strings.HasPrefix(resp, "ERR") {
+		h.log.Warn("response", "user", c.username, "verb", cmd.Verb, "resp", strings.TrimRight(resp, "\n"))
+	} else {
+		h.log.Info("response", "user", c.username, "verb", cmd.Verb, "resp", strings.TrimRight(resp, "\n"))
+	}
+}
+
+// trackFlood counts a client's commands per time window and logs a WARN when it
+// crosses the limit. Runs in the Hub goroutine, so the counter needs no lock.
+func (h *Hub) trackFlood(c *Client) {
+	now := time.Now()
+	if now.Sub(c.windowStart) > floodWindow {
+		c.windowStart = now
+		c.cmdCount = 0
+	}
+	c.cmdCount++
+	if c.cmdCount == floodLimit+1 {
+		h.log.Warn("possible command flood", "user", c.username, "addr", c.addr, "count", c.cmdCount, "window", floodWindow.String())
 	}
 }
 
@@ -126,8 +164,12 @@ func handleChat(h *Hub, c *Client, args []string) string {
 		p := h.world.GetPlayer(c.username)
 		h.broadcast(p.CurrentRoom, protocol.RoomChat(c.username, msg), nil)
 	case "GROUP":
-		// group chat needs a group system, which isn't implemented yet
-		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+		p := h.world.GetPlayer(c.username)
+		grp := h.groups[p.GroupID]
+		if grp == nil {
+			return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+		}
+		h.broadcastGroup(grp, protocol.GroupChat(c.username, msg), nil)
 	default:
 		return protocol.Errf(errBadRequest, "BAD_SCOPE")
 	}
@@ -149,6 +191,7 @@ func handleTake(h *Hub, c *Client, args []string) string {
 	if err != nil {
 		return protocol.Errf(protocol.ErrCodeItemNotFound, protocol.MsgItemNotFound)
 	}
+	h.log.Info("item taken", "user", c.username, "item", it.ID, "room", p.CurrentRoom)
 	return protocol.OKf("took %s", it.ID)
 }
 
@@ -166,6 +209,7 @@ func handleDrop(h *Hub, c *Client, args []string) string {
 	if err != nil {
 		return protocol.Errf(protocol.ErrCodeItemNotFound, protocol.MsgItemNotInInv)
 	}
+	h.log.Info("item dropped", "user", c.username, "item", it.ID, "room", p.CurrentRoom)
 	return protocol.OKf("dropped %s", it.ID)
 }
 
@@ -225,6 +269,8 @@ func handleAttack(h *Hub, c *Client, args []string) string {
 			h.broadcast(p.CurrentRoom, protocol.RoomPresenceEnter(c.username), c)
 		}
 	}
+	h.log.Info("combat", "user", c.username, "target", strings.Join(args, " "),
+		"damage", res.Damage, "counter", res.CounterDmg, "status", res.Status)
 	return protocol.OKJson(protocol.AttackResponse{
 		Damage:     res.Damage,
 		Counter:    res.CounterDmg,
@@ -259,25 +305,87 @@ func healthLabel(p *game.Player) string {
 	}
 }
 
-// buildLook converts a room into the LOOK JSON payload.
-func buildLook(h *Hub, room *game.Room) protocol.LookResponse {
-	items := make([]protocol.LookItem, 0, len(room.Items))
-	for _, it := range room.Items {
-		items = append(items, protocol.LookItem{ID: it.ID, Name: it.Name})
+// handleGroup: GROUP <CREATE|INVITE|JOIN|LEAVE> [args] — party management.
+func handleGroup(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
 	}
-	npcs := make([]protocol.LookNPC, 0, len(room.NPCs))
-	for _, n := range room.NPCs {
-		npcs = append(npcs, protocol.LookNPC{ID: n.ID, Name: n.Name, Hostile: n.Hostile})
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_SUBCOMMAND")
 	}
-	return protocol.LookResponse{
-		Room: protocol.LookRoom{
-			ID:          room.ID,
-			Name:        room.Name,
-			Description: room.Description,
-			Exits:       room.Exits,
-		},
-		Players: h.world.PlayersInRoom(room.ID),
-		Items:   items,
-		NPCs:    npcs,
+	switch strings.ToUpper(args[0]) {
+	case "CREATE":
+		return handleGroupCreate(h, c, args[1:])
+	case "INVITE":
+		return handleGroupInvite(h, c, args[1:])
+	case "JOIN":
+		return handleGroupJoin(h, c, args[1:])
+	case "LEAVE":
+		return handleGroupLeave(h, c, args[1:])
+	default:
+		return protocol.Errf(errBadRequest, "BAD_SUBCOMMAND")
 	}
 }
+
+// handleGroupCreate: GROUP CREATE — start a new group led by the caller.
+func handleGroupCreate(h *Hub, c *Client, args []string) string {
+	p := h.world.GetPlayer(c.username)
+	if p.GroupID != "" {
+		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+	}
+	h.groups[c.username] = &Group{
+		ID:      c.username,
+		Leader:  c.username,
+		Members: map[string]*Client{c.username: c},
+	}
+	p.GroupID = c.username
+	h.log.Info("group created", "user", c.username, "group", c.username)
+	return protocol.OKf("group=%s", c.username)
+}
+
+// handleGroupInvite: GROUP INVITE <username> — the leader invites a player.
+func handleGroupInvite(h *Hub, c *Client, args []string) string {
+	p := h.world.GetPlayer(c.username)
+	grp := h.groups[p.GroupID]
+	if grp == nil {
+		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+	}
+	if grp.Leader != c.username {
+		return protocol.Errf(errBadRequest, "NOT_GROUP_LEADER")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_USERNAME")
+	}
+	target := h.clientByUsername(args[0])
+	if target == nil {
+		return protocol.Errf(errBadRequest, "NO_SUCH_PLAYER")
+	}
+	if tp := h.world.GetPlayer(target.username); tp.GroupID != "" {
+		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+	}
+	target.invitedGroup = grp.ID
+	target.safeSend(protocol.GroupInvite(c.username))
+	return protocol.OK("invited")
+}
+
+// handleGroupJoin: GROUP JOIN — accept a pending invite.
+func handleGroupJoin(h *Hub, c *Client, args []string) string {
+	p := h.world.GetPlayer(c.username)
+	if p.GroupID != "" {
+		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+	}
+	if c.invitedGroup == "" {
+		return protocol.Errf(errBadRequest, "NO_INVITE")
+	}
+	grp := h.groups[c.invitedGroup]
+	c.invitedGroup = ""
+	if grp == nil {
+		return protocol.Errf(errBadRequest, "GROUP_GONE")
+	}
+	grp.Members[c.username] = c
+	p.GroupID = grp.ID
+	h.broadcastGroup(grp, protocol.GroupJoin(c.username), c)
+	h.log.Info("group joined", "user", c.username, "group", grp.ID)
+	return protocol.OKf("group=%s", grp.ID)
+}
+
