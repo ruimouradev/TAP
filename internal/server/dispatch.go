@@ -389,3 +389,130 @@ func handleGroupJoin(h *Hub, c *Client, args []string) string {
 	return protocol.OKf("group=%s", grp.ID)
 }
 
+// handleGroupLeave: GROUP LEAVE — leave the current group.
+func handleGroupLeave(h *Hub, c *Client, args []string) string {
+	p := h.world.GetPlayer(c.username)
+	if p.GroupID == "" {
+		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+	}
+	h.leaveGroup(c, p)
+	h.log.Info("group left", "user", c.username)
+	return protocol.OK("left")
+}
+
+// handleQuest: QUEST <npc> — request a quest from a quest-giver NPC.
+func handleQuest(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_NPC")
+	}
+	p := h.world.GetPlayer(c.username)
+	room := h.world.GetRoom(p.CurrentRoom)
+	def, err := game.GetQuestFromNPC(h.world, p, room, strings.Join(args, " "))
+	if err != nil {
+		return protocol.Errf(// handleGroupJoin: GROUP JOIN — accept a pending invite.
+func handleGroupJoin(h *Hub, c *Client, args []string) string {
+	p := h.world.GetPlayer(c.username)
+	if p.GroupID != "" {
+		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+	}
+	if c.invitedGroup == "" {
+		return protocol.Errf(errBadRequest, "NO_INVITE")
+	}
+	grp := h.groups[c.invitedGroup]
+	c.invitedGroup = ""
+	if grp == nil {
+		return protocol.Errf(errBadRequest, "GROUP_GONE")
+	}
+	grp.Members[c.username] = c
+	p.GroupID = grp.ID
+	h.broadcastGroup(grp, protocol.GroupJoin(c.username), c)
+	h.log.Info("group joined", "user", c.username, "group", grp.ID)
+	return protocol.OKf("group=%s", grp.ID)
+}
+
+// handleGroupLeave: GROUP LEAVE — leave the current group.
+func handleGroupLeave(h *Hub, c *Client, args []string) string {
+	p := h.world.GetPlayer(c.username)
+	if p.GroupID == "" {
+		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+	}
+	h.leaveGroup(c, p)
+	h.log.Info("group left", "user", c.username)
+	return protocol.OK("left")
+}
+
+// handleQuest: QUEST <npc> — request a quest from a quest-giver NPC.
+func handleQuest(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	if len(args) < 1 {
+		return protocol.Errf(errBadRequest, "MISSING_NPC")
+	}protocol.ErrCodeNoQuestAvailable, protocol.MsgNoQuestAvailable)
+	}
+	game.StartQuest(p, def)
+	h.log.Info("quest started", "user", c.username, "quest", def.ID)
+	return protocol.OKJson(protocol.QuestResponse{
+		QuestID:     def.ID,
+		Description: def.Description,
+		Type:        def.Type,
+		Target:      def.TargetID,
+		Reward:      def.Reward,
+	})
+}
+
+// handleQuests: QUESTS — list the player's quests. Any active quest whose
+// objective is now met is completed here (and its reward granted) before listing.
+func handleQuests(h *Hub, c *Client, args []string) string {
+	if c.username == "" {
+		return protocol.Errf(errBadRequest, "NOT_CONNECTED")
+	}
+	p := h.world.GetPlayer(c.username)
+	entries := make([]protocol.QuestsEntry, 0, len(p.Quests))
+	for _, pq := range game.ListQuests(p) {
+		if pq.State == game.QuestActive && game.CheckCompletion(p, pq) {
+			game.CompleteQuest(h.world, p, pq)
+			h.log.Info("quest completed", "user", c.username, "quest", pq.Def.ID, "reward", pq.Def.Reward)
+		}
+		entries = append(entries, protocol.QuestsEntry{
+			QuestID:     pq.Def.ID,
+			Description: pq.Def.Description,
+			State:       questStateLabel(pq.State),
+		})
+	}
+	return protocol.OKJson(entries)
+}
+
+// questStateLabel maps the internal quest state to the wire string.
+func questStateLabel(s game.QuestState) string {
+	if s == game.QuestCompleted {
+		return "completed"
+	}
+	return "active"
+}
+
+// buildLook converts a room into the LOOK JSON payload.
+func buildLook(h *Hub, room *game.Room) protocol.LookResponse {
+	items := make([]protocol.LookItem, 0, len(room.Items))
+	for _, it := range room.Items {
+		items = append(items, protocol.LookItem{ID: it.ID, Name: it.Name})
+	}
+	npcs := make([]protocol.LookNPC, 0, len(room.NPCs))
+	for _, n := range room.NPCs {
+		npcs = append(npcs, protocol.LookNPC{ID: n.ID, Name: n.Name, Hostile: n.Hostile})
+	}
+	return protocol.LookResponse{
+		Room: protocol.LookRoom{
+			ID:          room.ID,
+			Name:        room.Name,
+			Description: room.Description,
+			Exits:       room.Exits,
+		},
+		Players: h.world.PlayersInRoom(room.ID),
+		Items:   items,
+		NPCs:    npcs,
+	}
+}
