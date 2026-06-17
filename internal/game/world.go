@@ -14,6 +14,7 @@ type World struct {
 	Players   map[string]*Player   // username → Player
 	StartRoom string               // where new players spawn
 	Quests    map[string]*QuestDef // questID → static definition
+	Items     map[string]*Item     // itemID → catalog entry (for quest rewards)
 }
 
 // Room is a location in the world.
@@ -35,7 +36,8 @@ type Player struct {
 	MaxHP       int
 	Inventory   map[string]*Item
 	Quests      map[string]*PlayerQuest
-	GroupID     string // empty if not in a group
+	Defeated    map[string]bool // npcID → true once this player has defeated it
+	GroupID     string          // empty if not in a group
 }
 
 // NPC is a non-player character living in a room.
@@ -63,6 +65,11 @@ func NewWorld(wf *worldfile.WorldFile) *World {
 		Players:   make(map[string]*Player),
 		StartRoom: wf.StartRoom,
 		Quests:    make(map[string]*QuestDef, len(wf.Quests)),
+		Items:     make(map[string]*Item, len(wf.Items)),
+	}
+
+	for id, def := range wf.Items {
+		w.Items[id] = &Item{ID: id, Name: def.Name}
 	}
 
 	for id, q := range wf.Quests {
@@ -127,6 +134,7 @@ func (w *World) AddPlayer(username string) (*Player, error) {
 		MaxHP:       100,
 		Inventory:   make(map[string]*Item),
 		Quests:      make(map[string]*PlayerQuest),
+		Defeated:    make(map[string]bool),
 	}
 	w.Players[username] = p
 	if room := w.Rooms[w.StartRoom]; room != nil {
