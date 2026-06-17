@@ -1,8 +1,6 @@
-my_plan.md
 bin/
 *.exe
 *.test
 *.out
 coverage.out
 .DS_Store
-docs/estudo/
