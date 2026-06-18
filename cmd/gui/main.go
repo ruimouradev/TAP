@@ -29,24 +29,87 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sort"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"the-answer-protocol/internal/config"
 	"the-answer-protocol/internal/protocol"
 )
 
+// commandTimeout is how long we wait for a server response before 
+// assuming the command was lost or the server is out of sync.
+const commandTimeout = 5 * time.Second
+
+type pendingCmd struct {
+	verb   string
+	sentAt time.Time
+}
+
+// CommandQueue is a thread-safe FIFO queue to track pending commands.
+// This ensures responses are always mapped to the correct command.
+type CommandQueue struct {
+	mu    sync.Mutex
+	cmds  []pendingCmd
+}
+
+func (q *CommandQueue) Push(verb string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.cmds = append(q.cmds, pendingCmd{verb: verb, sentAt: time.Now()})
+}
+
+func (q *CommandQueue) Pop() string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	now := time.Now()
+	for len(q.cmds) > 0 {
+		item := q.cmds[0]
+		q.cmds = q.cmds[1:]
+
+		// If the command is still "fresh", return its verb
+		if now.Sub(item.sentAt) < commandTimeout {
+			return item.verb
+		}
+		// Otherwise, log that we pruned it and check the next one
+		log.Printf("⚠️ Protocol Sync: Pruned timed-out command '%s'", item.verb)
+	}
+	return ""
+}
+
+func (q *CommandQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.cmds)
+}
+
+func (q *CommandQueue) Clear() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.cmds = nil
+}
+
 var (
-	// Tracks the last command sent to know how to interpret OK responses
-	lastSentVerb string
+	// pendingCommands tracks what we sent so we know how to parse what we get back
+	pendingCommands = &CommandQueue{}
 	// Global connection handle so applyResponse can trigger follow-up commands
+	currentGroupID  string // Stores the ID of the group the player is currently in
+	myUsername      string
+	groupMembers    []string
 	globalConn      net.Conn
 	activeChatScope = "GLOBAL"
+	// responseHandlers maps a Verb to the logic that handles its OK payload
+	responseHandlers map[string]func(payload string)
 )
 
 // main creates the Fyne app, opens the connection to the server, wires
@@ -58,6 +121,41 @@ func main() {
 	//   2. Create app and Window("TAP")
 	a := app.New()
 	w := a.NewWindow("TAP")
+
+	// Initialize global widgets used by network handlers early to avoid nil-pointer panics
+	// if the server responds before the UI layout is fully rendered.
+	statusBusyLabel = canvas.NewText("  ", theme.ForegroundColor())
+	statusBusyLabel.TextSize = 24 // Significantly larger than default (usually 14)
+	statusHPValue = widget.NewLabel("HP: --")
+	statusRoomValue = widget.NewLabel("Room: --")
+	statusServerValue = widget.NewLabel("Server: --")
+	roomNameValue = widget.NewLabel("--")
+	roomDescriptionValue = widget.NewLabel("Waiting for LOOK...")
+	roomExitsValue = widget.NewLabel("--")
+	roomPlayersValue = widget.NewLabel("--")
+	chatGlobalLog = widget.NewLabel("Global chat will appear here...")
+	chatGlobalLog.Wrapping = fyne.TextWrapWord
+	groupStatusLabel = widget.NewLabel("No Group")
+	groupStatusLabel.Wrapping = fyne.TextWrapWord
+	chatGlobalScroll = container.NewVScroll(chatGlobalLog)
+	chatGlobalScroll.SetMinSize(fyne.NewSize(0, 200))
+
+	chatRoomLog = widget.NewLabel("Room chat will appear here...")
+	chatRoomLog.Wrapping = fyne.TextWrapWord
+	chatRoomScroll = container.NewVScroll(chatRoomLog)
+	chatRoomScroll.SetMinSize(fyne.NewSize(0, 200))
+
+	chatGroupLog = widget.NewLabel("Group chat will appear here...")
+	chatGroupLog.Wrapping = fyne.TextWrapWord
+	chatGroupScroll = container.NewVScroll(chatGroupLog)
+	chatGroupScroll.SetMinSize(fyne.NewSize(0, 200))
+
+	interactionLog = widget.NewLabel("Interaction details will appear here...")
+	inventorySelected = widget.NewLabel("Selected item: --")
+	moveButtonsContainer = container.NewHBox()
+	inventoryData = []protocol.InventoryItem{}
+
+	initResponseHandlers()
 
 	//   3. Channel to communicate between readLoop (Network thread) and the UI
 	// using a buffer of up to 100 messages to avoid frezing readLoop
@@ -110,6 +208,7 @@ func main() {
 		// The callback function. Code that sits dormant until player clicks one of the two buttons.
 		}, func(ok bool) {
 			if ok && usernameEntry.Text != "" {
+				myUsername = usernameEntry.Text
 				logCommand(sendCommand(conn, "CONNECT", usernameEntry.Text))
 			} else {
 				a.Quit()
@@ -185,7 +284,11 @@ func sendCommand(conn net.Conn, verb string, args ...string) error {
 	// Initializes a new struct object. Ensure verb is uppercase as per
 	//  protocol design
 	cmd := protocol.Command{Verb: strings.ToUpper(verb), Args: args}
-	lastSentVerb = cmd.Verb
+	if statusBusyLabel != nil {
+		statusBusyLabel.Text = "⏳"
+		statusBusyLabel.Refresh()
+	}
+	pendingCommands.Push(cmd.Verb)
 
 	// Calls String method. Takes the verb and the arguments array and stitch
 	// them together into a string + "/n"
@@ -207,9 +310,13 @@ var (
 	roomItemsList        *widget.List
 	roomNPCsList         *widget.List
 	roomPlayersValue     *widget.Label
-	chatGlobalLog        *widget.Entry
-	chatRoomLog          *widget.Entry
-	chatGroupLog         *widget.Entry
+	chatGlobalLog        *widget.Label
+	chatRoomLog          *widget.Label
+	chatGroupLog         *widget.Label
+	chatGlobalScroll     *container.Scroll
+	chatRoomScroll       *container.Scroll
+	chatGroupScroll      *container.Scroll
+	chatTabs             *container.AppTabs
 	chatInput            *widget.Entry
 	interactionLog       *widget.Label
 	interactionScroll    *container.Scroll
@@ -220,6 +327,9 @@ var (
 	statusHPValue        *widget.Label
 	statusServerValue    *widget.Label
 	statusRoomValue      *widget.Label
+	groupStatusLabel     *widget.Label
+	groupActionContainer *fyne.Container
+	statusBusyLabel      *canvas.Text
 	moveButtonsContainer *fyne.Container // New: Container for dynamic move buttons
 	inventoryData        []protocol.InventoryItem
 	selectedRoomItemID   string
@@ -233,14 +343,9 @@ var (
 func buildRoomPanel() fyne.CanvasObject {
 	// Instantiates a label widget displaying generic placeholder text until
 	//  the server synchronizes the live data
-	roomNameValue = widget.NewLabel("--")
 	// Wraps words into multiple lines when they hit the boundary of the panel container.
 	roomNameValue.Wrapping = fyne.TextWrapWord
-
-	roomDescriptionValue = widget.NewLabel("Waiting for LOOK...")
 	roomDescriptionValue.Wrapping = fyne.TextWrapWord
-
-	roomExitsValue = widget.NewLabel("--")
 	roomExitsValue.Wrapping = fyne.TextWrapWord
 
 	roomItemsList = widget.NewList(
@@ -275,10 +380,7 @@ func buildRoomPanel() fyne.CanvasObject {
 	roomNPCsScroll := container.NewVScroll(roomNPCsList)
 	roomNPCsScroll.SetMinSize(fyne.NewSize(0, 100))
 
-	roomPlayersValue = widget.NewLabel("--")
 	roomPlayersValue.Wrapping = fyne.TextWrapWord
-
-	moveButtonsContainer = container.NewHBox() // Initialize the container for dynamic move buttons
 
 	content := container.NewVBox(
 		widget.NewLabelWithStyle("Room", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -305,21 +407,6 @@ func buildRoomPanel() fyne.CanvasObject {
 // buildChatPanel returns the three-tab chat (GLOBAL / ROOM / GROUP)
 // plus the input field that builds the right CHAT command.
 func buildChatPanel() fyne.CanvasObject {
-	chatGlobalLog = widget.NewMultiLineEntry()
-	chatGlobalLog.SetText("Global chat will appear here...")
-	chatGlobalLog.Disable()
-	chatGlobalLog.Wrapping = fyne.TextWrapWord
-
-	chatRoomLog = widget.NewMultiLineEntry()
-	chatRoomLog.SetText("Room chat will appear here...")
-	chatRoomLog.Disable()
-	chatRoomLog.Wrapping = fyne.TextWrapWord
-
-	chatGroupLog = widget.NewMultiLineEntry()
-	chatGroupLog.SetText("Group chat will appear here...")
-	chatGroupLog.Disable()
-	chatGroupLog.Wrapping = fyne.TextWrapWord
-
 	chatInput = widget.NewEntry()
 	chatInput.SetPlaceHolder("Type a chat message...")
 
@@ -340,35 +427,39 @@ func buildChatPanel() fyne.CanvasObject {
 		chatInput,
 	)
 
-	tabs := container.NewAppTabs(
-		container.NewTabItem("GLOBAL", chatGlobalLog),
-		container.NewTabItem("ROOM", chatRoomLog),
-		container.NewTabItem("GROUP", chatGroupLog),
+	chatTabs = container.NewAppTabs(
+		container.NewTabItem("GLOBAL", chatGlobalScroll),
+		container.NewTabItem("ROOM", chatRoomScroll),
+		container.NewTabItem("GROUP", chatGroupScroll),
 	)
 
-	tabs.OnSelected = func(t *container.TabItem) {
+	chatTabs.OnSelected = func(t *container.TabItem) {
 		activeChatScope = t.Text
+		if groupActionContainer != nil {
+			if t.Text == "GROUP" {
+				groupActionContainer.Show()
+			} else {
+				groupActionContainer.Hide()
+			}
+		}
 	}
 
-	return widget.NewCard("Chat", "Global / room / group chat", container.NewVBox(tabs, inputRow))
+	return widget.NewCard("Chat", "", container.NewVBox(chatTabs, inputRow, groupStatusLabel))
 }
 
 // buildInteractionPanel returns a panel for NPC dialogues and combat feedback.
 func buildInteractionPanel() fyne.CanvasObject {
-	interactionLog = widget.NewLabel("Interaction details will appear here...")
 	interactionLog.SetText("Interaction details will appear here...")
 	interactionLog.Wrapping = fyne.TextWrapWord
 
 	interactionScroll = container.NewVScroll(interactionLog)
 	interactionScroll.SetMinSize(fyne.NewSize(0, 150))
-	return widget.NewCard("Interaction", "Dialogue & Combat feedback", interactionScroll)
+	return widget.NewCard("Interaction", "", interactionScroll)
 }
 
 // buildInventoryPanel returns the inventory list + a DROP button bound
 // to the currently selected item.
 func buildInventoryPanel() fyne.CanvasObject {
-	inventoryData = []protocol.InventoryItem{}
-	inventorySelected = widget.NewLabel("Selected item: --")
 	inventorySelected.Wrapping = fyne.TextWrapWord
 
 	inventoryItems = widget.NewList(
@@ -401,15 +492,15 @@ func buildInventoryPanel() fyne.CanvasObject {
 		dropButton,
 	)
 
-	return widget.NewCard("Inventory", "Your carried items", content)
+	return widget.NewCard("Inventory", "", content)
 }
 
-func promptAndSend(parent fyne.Window, conn net.Conn, title, placeholder, verb string) {
+func promptAndSend(parent fyne.Window, conn net.Conn, title, placeholder, verb string, prefixArgs ...string) {
 	entry := widget.NewEntry()
 	entry.SetPlaceHolder(placeholder)
 
 	d := dialog.NewForm(title, "Send", "Cancel", []*widget.FormItem{
-		{Text: "Target", Widget: entry},
+		{Text: "Input", Widget: entry},
 	}, func(ok bool) {
 		if !ok {
 			return
@@ -418,7 +509,8 @@ func promptAndSend(parent fyne.Window, conn net.Conn, title, placeholder, verb s
 		if value == "" {
 			return
 		}
-		logCommand(sendCommand(conn, verb, value))
+		args := append(prefixArgs, value)
+		logCommand(sendCommand(conn, verb, args...))
 	}, parent)
 	d.Show()
 }
@@ -427,6 +519,23 @@ func promptAndSend(parent fyne.Window, conn net.Conn, title, placeholder, verb s
 // verbs (LOOK, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS).
 // Each button calls sendCommand with the appropriate verb.
 func buildActionBar(parent fyne.Window, conn net.Conn) fyne.CanvasObject {
+	groupActionContainer = container.NewHBox(
+		widget.NewLabel("| Group:"),
+		widget.NewButton("CREATE", func() {
+			logCommand(sendCommand(globalConn, "GROUP", "CREATE"))
+		}),
+		widget.NewButton("INVITE", func() {
+			promptAndSend(parent, globalConn, "Invite Player", "Player name", "GROUP", "INVITE")
+		}),
+		widget.NewButton("LEAVE", func() {
+			logCommand(sendCommand(globalConn, "GROUP", "LEAVE"))
+		}),
+	)
+	// Start hidden unless the Group tab is somehow already selected
+	if activeChatScope != "GROUP" {
+		groupActionContainer.Hide()
+	}
+
 	return container.NewHBox(
 		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }), // LOOK button remains
 		// MOVE buttons are now dynamically generated in the room panel
@@ -452,17 +561,16 @@ func buildActionBar(parent fyne.Window, conn net.Conn) fyne.CanvasObject {
 			}
 		}),
 		widget.NewButton("QUESTS", func() { logCommand(sendCommand(conn, "QUESTS")) }),
+		widget.NewButton("QUIT", func() { logCommand(sendCommand(conn, "QUIT")) }),
+		groupActionContainer,
 	)
 }
 
 // buildStatusBar returns the top/bottom bar with HP, players in room,
 // and players on server. Refreshed on STATUS responses and EVT STATS.
 func buildStatusBar() fyne.CanvasObject {
-	statusHPValue = widget.NewLabel("HP: --")
-	statusRoomValue = widget.NewLabel("Room: --")
-	statusServerValue = widget.NewLabel("Server: --")
-
 	return container.NewHBox(
+		statusBusyLabel,
 		statusHPValue,
 		layout.NewSpacer(),
 		statusRoomValue,
@@ -489,17 +597,49 @@ func updateMoveButtons(exits map[string]string) {
 	moveButtonsContainer.Refresh() // Important to refresh the container after adding/removing children
 }
 
+func updateGroupDisplay(groupID string) {
+	if groupID == "" || len(groupMembers) == 0 {
+		groupStatusLabel.SetText("No Group")
+		return
+	}
+	members := "None"
+	if len(groupMembers) > 0 {
+		// Sort members for consistent display
+		sort.Strings(groupMembers)
+		members = strings.Join(groupMembers, ", ")
+	}
+	groupStatusLabel.SetText(fmt.Sprintf("Group: %s | Members: %s", groupID, members))
+}
+
 func logCommand(err error) {
 	if err != nil {
 		log.Printf("Send command failed: %v", err)
 	}
 }
 
-// applyResponse routes an OK / ERR response line to the right panel.
-// Called from the UI side of the events channel.
 func applyResponse(line string) {
+	// Every response (OK or ERR) corresponds to the oldest pending command.
+	verb := pendingCommands.Pop()
+
+	// If the queue is now empty, hide the activity indicator (with nil check)
+	if pendingCommands.Len() == 0 && statusBusyLabel != nil {
+		// We use a tiny delay before clearing to ensure the "pulse" is visible 
+		// to the human eye even on super-fast localhost connections.
+		time.AfterFunc(300*time.Millisecond, func() {
+			if pendingCommands.Len() == 0 {
+				statusBusyLabel.Text = "  "
+				statusBusyLabel.Refresh()
+			}
+		})
+	}
+
+	if verb == "" {
+		return // No pending command to match this response
+	}
+
 	if strings.HasPrefix(line, "ERR ") {
-		log.Printf("Server Error: %s", line[4:])
+		// Even on error, we popped the verb to stay in sync.
+		log.Printf("Server Error for %s: %s", verb, line[4:])
 		return
 	}
 
@@ -512,123 +652,165 @@ func applyResponse(line string) {
 		payload = line[3:]
 	}
 
-	// Protocol improvement: check for specific payload formats regardless of lastSentVerb
-	// This handles cases where multiple commands were sent in rapid succession
-	if strings.HasPrefix(payload, "room=") {
-		roomID := strings.TrimPrefix(payload, "room=")
-		statusRoomValue.SetText("Room: " + roomID)
-		// Auto-refresh look when entering a new room
-		logCommand(sendCommand(globalConn, "LOOK"))
-		return
+	if handler, ok := responseHandlers[verb]; ok {
+		handler(payload)
 	}
+}
 
-	switch lastSentVerb {
-	case "CONNECT":
-		// Once connected, sync the UI state immediately
-		logCommand(sendCommand(globalConn, "LOOK"))
-	case "TAKE", "DROP":
-		if lastSentVerb == "DROP" {
+// initResponseHandlers populates the map of logic for each protocol verb.
+func initResponseHandlers() {
+	responseHandlers = map[string]func(string){
+		"CONNECT": func(payload string) {
+			logCommand(sendCommand(globalConn, "LOOK"))
+		},
+		"QUIT": func(payload string) {
+			// Server acknowledged the quit, now we can safely close the app
+			fyne.CurrentApp().Quit()
+		},
+		"MOVE": func(payload string) {
+			if strings.HasPrefix(payload, "room=") {
+				roomID := strings.TrimPrefix(payload, "room=")
+				statusRoomValue.SetText("Room: " + roomID)
+				logCommand(sendCommand(globalConn, "LOOK"))
+			}
+		},
+		"TAKE": func(payload string) {
+			roomItemsList.UnselectAll()
+			selectedRoomItemID = ""
+			logCommand(sendCommand(globalConn, "LOOK"))
+		},
+		"DROP": func(payload string) {
 			inventoryItems.UnselectAll()
 			inventorySelected.SetText("Selected item: --")
 			selectedItemID = ""
-		}
-		if lastSentVerb == "TAKE" {
-			roomItemsList.UnselectAll()
-			selectedRoomItemID = ""
-		}
-		logCommand(sendCommand(globalConn, "LOOK"))
-	case "LOOK":
-		var data protocol.LookResponse
-		if err := json.Unmarshal([]byte(payload), &data); err == nil {
-			roomNameValue.SetText(data.Room.Name)
-			roomDescriptionValue.SetText(data.Room.Description)
+			logCommand(sendCommand(globalConn, "LOOK"))
+		},
+		"LOOK": func(payload string) {
+			var data protocol.LookResponse
+			if err := json.Unmarshal([]byte(payload), &data); err == nil {
+				roomNameValue.SetText(data.Room.Name)
+				roomDescriptionValue.SetText(data.Room.Description)
 
-			exits := []string{}
-			for dir := range data.Room.Exits {
-				exits = append(exits, dir)
+				exits := []string{}
+				for dir := range data.Room.Exits {
+					exits = append(exits, dir)
+				}
+				roomExitsValue.SetText(strings.Join(exits, ", "))
+				statusRoomValue.SetText("Room: " + data.Room.ID)
+
+				roomItemsData = data.Items
+				roomItemsList.UnselectAll()
+				roomItemsList.Refresh()
+
+				roomNPCsData = data.NPCs
+				roomNPCsList.UnselectAll()
+				roomNPCsList.Refresh()
+
+				roomPlayersValue.SetText(strings.Join(data.Players, ", "))
+				updateMoveButtons(data.Room.Exits)
+
+				// Chain refresh: LOOK success triggers INVENTORY sync
+				logCommand(sendCommand(globalConn, "INVENTORY"))
 			}
-			roomExitsValue.SetText(strings.Join(exits, ", "))
-			statusRoomValue.SetText("Room: " + data.Room.ID)
-
-			roomItemsData = data.Items
-			roomItemsList.UnselectAll()
-			roomItemsList.Refresh()
-
-			roomNPCsData = data.NPCs
-			roomNPCsList.UnselectAll()
-			roomNPCsList.Refresh()
-
-			roomPlayersValue.SetText(strings.Join(data.Players, ", "))
-
-			updateMoveButtons(data.Room.Exits)
-
-			// Chain refresh: LOOK success triggers INVENTORY sync
-			logCommand(sendCommand(globalConn, "INVENTORY"))
-		}
-	case "STATUS":
-		var data protocol.StatusResponse
-		if err := json.Unmarshal([]byte(payload), &data); err == nil {
-			statusHPValue.SetText(fmt.Sprintf("HP: %d/%d", data.HP, data.MaxHP))
-		}
-	case "INVENTORY":
-		var items []protocol.InventoryItem
-		if err := json.Unmarshal([]byte(payload), &items); err == nil {
-			inventoryData = items
-			inventoryItems.Refresh()
-			// Chain refresh: INVENTORY success triggers STATUS sync
-			logCommand(sendCommand(globalConn, "STATUS"))
-		}
-	case "ATTACK":
-		var data protocol.AttackResponse
-		if err := json.Unmarshal([]byte(payload), &data); err == nil {
-			formatted := fmt.Sprintf("[Combat] You dealt %d damage. Target HP: %d/%d. Status: %s\n",
-				data.Damage, data.TargetHP, data.TargetHP+data.Damage, data.Status) // Simplified calculation for display
-			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
-			if data.Counter > 0 {
-				formatted += fmt.Sprintf("[Combat] NPC countered for %d damage! Your HP: %d\n", data.Counter, data.AttackerHP)
+		},
+		"GROUP": func(payload string) {
+			if strings.HasPrefix(payload, "group=") {
+				currentGroupID = strings.TrimPrefix(payload, "group=") // Store the actual ID
+				groupMembers = []string{myUsername}
+				if currentGroupID != myUsername { // Leader is the group ID
+					groupMembers = append(groupMembers, currentGroupID)
+				}
+				updateGroupDisplay(currentGroupID)
+				// Immediately send a LOOK command to discover other players in the room
+				// who might also be in the group.
+				logCommand(sendCommand(globalConn, "LOOK"))
+			} else if payload == "left" {
+				currentGroupID = "" // Clear group ID
+				groupMembers = nil
+				updateGroupDisplay("")
+			} else if payload == "disbanded" { // Server might send this if leader leaves
+				currentGroupID = ""
+				groupMembers = nil
+				updateGroupDisplay("")
+			} else if payload == "kicked" { // If player was kicked
+				currentGroupID = ""
+				groupMembers = nil
+				updateGroupDisplay("")
 			}
-			interactionLog.SetText(currentText + formatted)
-			interactionScroll.ScrollToBottom()
-			// Also refresh status bar HP
-			statusHPValue.SetText(fmt.Sprintf("HP: %d/--", data.AttackerHP))
-
-			roomNPCsList.UnselectAll()
-			selectedNPCID = ""
-		}
-	case "TALK":
-		var data protocol.TalkResponse
-		if err := json.Unmarshal([]byte(payload), &data); err == nil {
-			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
-			formatted := fmt.Sprintf("[%s]: \"%s\"\n", data.NPC, data.Dialogue)
-			interactionLog.SetText(currentText + formatted)
-			interactionScroll.ScrollToBottom()
-
-			roomNPCsList.UnselectAll()
-			selectedNPCID = ""
-		}
-	case "QUEST":
-		var data protocol.QuestResponse
-		if err := json.Unmarshal([]byte(payload), &data); err == nil {
-			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
-			formatted := fmt.Sprintf("[Quest] %s\nTarget: %s\nReward: %s\nDesc: %s\n",
-				data.QuestID, data.Target, data.Reward, data.Description)
-			interactionLog.SetText(currentText + formatted)
-			interactionScroll.ScrollToBottom()
-
-			roomNPCsList.UnselectAll()
-			selectedNPCID = ""
-		}
-	case "QUESTS":
-		var data []protocol.QuestsEntry
-		if err := json.Unmarshal([]byte(payload), &data); err == nil {
-			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
-			formatted := "Your Quests:\n"
-			for _, q := range data {
-				formatted += fmt.Sprintf("- [%s] %s: %s\n", q.State, q.QuestID, q.Description)
+		},
+		"STATUS": func(payload string) {
+			var data protocol.StatusResponse
+			if err := json.Unmarshal([]byte(payload), &data); err == nil {
+				statusHPValue.SetText(fmt.Sprintf("HP: %d/%d", data.HP, data.MaxHP))
 			}
-			interactionLog.SetText(currentText + formatted)
-			interactionScroll.ScrollToBottom()
-		}
+		},
+		"INVENTORY": func(payload string) {
+			var items []protocol.InventoryItem
+			if err := json.Unmarshal([]byte(payload), &items); err == nil {
+				inventoryData = items
+				inventoryItems.Refresh()
+				// Chain refresh: INVENTORY success triggers STATUS sync
+				logCommand(sendCommand(globalConn, "STATUS"))
+			}
+		},
+		"ATTACK": func(payload string) {
+			var data protocol.AttackResponse
+			if err := json.Unmarshal([]byte(payload), &data); err == nil {
+				formatted := fmt.Sprintf("[Combat] You dealt %d damage. Target HP: %d/%d. Status: %s\n",
+					data.Damage, data.TargetHP, data.TargetHP+data.Damage, data.Status)
+				currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+				if data.Counter > 0 {
+					formatted += fmt.Sprintf("[Combat] NPC countered for %d damage! Your HP: %d\n", data.Counter, data.AttackerHP)
+				}
+				interactionLog.SetText(currentText + formatted)
+				interactionScroll.ScrollToBottom()
+				statusHPValue.SetText(fmt.Sprintf("HP: %d/--", data.AttackerHP))
+
+				roomNPCsList.UnselectAll()
+				selectedNPCID = ""
+			}
+		},
+		"TALK": func(payload string) {
+			var data protocol.TalkResponse
+			if err := json.Unmarshal([]byte(payload), &data); err == nil {
+				currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+				formatted := fmt.Sprintf("[%s]: \"%s\"\n", data.NPC, data.Dialogue)
+				interactionLog.SetText(currentText + formatted)
+				interactionScroll.ScrollToBottom()
+
+				roomNPCsList.UnselectAll()
+				selectedNPCID = ""
+			}
+		},
+		"QUEST": func(payload string) {
+			var data protocol.QuestResponse
+			if err := json.Unmarshal([]byte(payload), &data); err == nil {
+				currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+				formatted := fmt.Sprintf("[Quest] %s\nTarget: %s\nReward: %s\nDesc: %s\n",
+					data.QuestID, data.Target, data.Reward, data.Description)
+				interactionLog.SetText(currentText + formatted)
+				interactionScroll.ScrollToBottom()
+
+				roomNPCsList.UnselectAll()
+				selectedNPCID = ""
+			}
+		},
+		"QUESTS": func(payload string) {
+			var data []protocol.QuestsEntry
+			if err := json.Unmarshal([]byte(payload), &data); err == nil {
+				currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+				formatted := "Your Quests:\n"
+				for _, q := range data {
+					formatted += fmt.Sprintf("- [%s] %s: %s\n", q.State, q.QuestID, q.Description)
+				}
+				interactionLog.SetText(currentText + formatted)
+				interactionScroll.ScrollToBottom()
+			}
+		},
+		"CHAT": func(payload string) {
+			// CHAT commands typically return "OK" with no data. 
+			// No specific UI update needed here as we wait for EVT CHAT.
+		},
 	}
 }
 
@@ -644,45 +826,134 @@ func applyEvent(line string) {
 	data := parts[1]
 
 	switch category {
-	case "CHAT":
-		handleChatEvent(data)
 	case "STATS":
 		statusServerValue.SetText("Server: " + data)
+	case "GROUP":
+		if strings.HasPrefix(data, "CHAT ") {
+			handleChatEvent("GROUP", strings.TrimPrefix(data, "CHAT "))
+		} else {
+			handleGroupEvent(data)
+		}
+	case "GLOBAL":
+		if strings.HasPrefix(data, "CHAT ") {
+			handleChatEvent("GLOBAL", strings.TrimPrefix(data, "CHAT "))
+		}
 	case "ROOM":
-		// If room presence changes, we usually trigger a LOOK to refresh the panel
-		// but we can also just log it to the room chat.
-		chatRoomLog.SetText(chatRoomLog.Text + "\n" + "[System] " + data)
+		if strings.HasPrefix(data, "CHAT ") {
+			handleChatEvent("ROOM", strings.TrimPrefix(data, "CHAT "))
+		} else {
+			updateChatLog(chatRoomLog, chatRoomScroll, "[System] "+data+"\n")
+		}
 	}
 }
 
-func handleChatEvent(payload string) {
-	// Format: <SCOPE> <sender> <message>
-	parts := strings.SplitN(payload, " ", 3)
-	if len(parts) < 3 {
+func handleGroupEvent(payload string) {
+	parts := strings.SplitN(payload, " ", 2)
+	if len(parts) < 2 {
 		return
 	}
 
-	scope := parts[0]
-	sender := parts[1]
-	msg := parts[2]
+	action := parts[0]
+	user := parts[1]
+
+	if action == "INVITE" {
+		// Show a dialog to the user
+		d := dialog.NewConfirm("Group Invite", fmt.Sprintf("%s invited you to a group. Join?", user), func(ok bool) {
+			if ok {
+				logCommand(sendCommand(globalConn, "GROUP", "JOIN", user))
+			}
+		}, fyne.CurrentApp().Driver().AllWindows()[0])
+		d.Show()
+	} else if action == "JOIN" {
+		// Add to internal list if not already there
+		exists := false
+		for _, m := range groupMembers {
+			if m == user {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			groupMembers = append(groupMembers, user)
+		}
+		updateChatLog(chatGroupLog, chatGroupScroll, "[System] "+user+" joined the group\n")
+
+		if currentGroupID != "" {
+			updateGroupDisplay(currentGroupID)
+		}
+	} else if action == "LEAVE" {
+		updateChatLog(chatGroupLog, chatGroupScroll, "[System] "+user+" left the group\n")
+
+		// Remove from internal list
+		for i, m := range groupMembers {
+			if m == user {
+				groupMembers = append(groupMembers[:i], groupMembers[i+1:]...)
+				break
+			}
+		}
+
+		if currentGroupID != "" && currentGroupID == user { // If the leader left, the group is disbanded
+			currentGroupID = "" // Clear group ID
+			groupMembers = nil
+			updateGroupDisplay("")
+		} else if currentGroupID != "" {
+			updateGroupDisplay(currentGroupID)
+		}
+	}
+}
+
+func handleChatEvent(scope, payload string) {
+	// payload is now: <sender> <message>
+	parts := strings.SplitN(payload, " ", 2)
+	if len(parts) < 2 {
+		return
+	}
+
+	sender := parts[0]
+	msg := parts[1]
 
 	formatted := fmt.Sprintf("[%s]: %s\n", sender, msg)
 
 	switch scope {
 	case "GLOBAL":
-		chatGlobalLog.SetText(chatGlobalLog.Text + formatted)
-		scrollBottom(chatGlobalLog)
+		updateChatLog(chatGlobalLog, chatGlobalScroll, formatted)
+		if chatTabs != nil {
+			chatTabs.SelectIndex(0)
+		}
 	case "ROOM":
-		chatRoomLog.SetText(chatRoomLog.Text + formatted)
-		scrollBottom(chatRoomLog)
+		updateChatLog(chatRoomLog, chatRoomScroll, formatted)
+		// Auto-switch to ROOM tab so the player doesn't miss messages
+		if chatTabs != nil {
+			chatTabs.SelectIndex(1)
+		}
 	case "GROUP":
-		chatGroupLog.SetText(chatGroupLog.Text + formatted)
-		scrollBottom(chatGroupLog)
+		updateChatLog(chatGroupLog, chatGroupScroll, formatted)
+		// Discovery heuristic: if someone chats in group, they are a member.
+		if currentGroupID != "" {
+			found := false
+			for _, m := range groupMembers {
+				if m == sender {
+					found = true
+					break
+				}
+			}
+			if !found {
+				groupMembers = append(groupMembers, sender)
+				updateGroupDisplay(currentGroupID)
+			}
+		}
+		if chatTabs != nil {
+			chatTabs.SelectIndex(2)
+		}
 	}
 }
 
-func scrollBottom(e *widget.Entry) {
-	// Helper to keep chat logs visible at the bottom
-	e.CursorRow = len(strings.Split(e.Text, "\n"))
-	e.Refresh()
+func updateChatLog(label *widget.Label, scroll *container.Scroll, msg string) {
+	// If the log still has the initial placeholder, clear it first
+	if strings.Contains(label.Text, "will appear here...") {
+		label.SetText(msg)
+	} else {
+		label.SetText(label.Text + msg)
+	}
+	scroll.ScrollToBottom()
 }

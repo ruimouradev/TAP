@@ -98,10 +98,9 @@ World quests: `quest.fetch_herbs` (from the Baker → reward `item.bread`) and `
 
 ## World Design
 
-> [!WARNING]
-> **TODO (acaldeir)** — Describe the full room layout, loop structure, NPC roles and their behaviour, and item distribution across rooms.
+The TAP world consists of 8 distinct rooms designed with a **circular loop structure** to encourage exploration and player interaction, with a few dangerous branches.
 
-8 rooms arranged in a loop with one branch. Map overview:
+### Map Layout
 
 ```
 Village Square ── Bakery
