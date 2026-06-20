@@ -1,9 +1,9 @@
 /*
-Package protocol — Owner: BOTH (Rui + Alexandre).
+Package protocol - Owner: BOTH (Rui + Alexandre).
 
 File command_test.go: tests for Parse() and for the response/event formatters.
 
-This file is a reference for the table-driven test style — the idiomatic way
+This file is a reference for the table-driven test style - the idiomatic way
 to test in Go. Run it with:
 
 	go test ./internal/protocol
@@ -20,7 +20,7 @@ import (
 
 func TestParse(t *testing.T) {
 	// Each case describes an input and the expected result. Adding a new case
-	// is just adding one line — that is what makes this style practical.
+	// is just adding one line - that is what makes this style practical.
 	cases := []struct {
 		name     string
 		line     string
@@ -93,8 +93,11 @@ func TestResponses(t *testing.T) {
 	if got := OKf("room=%s", "loc.bakery"); got != "OK room=loc.bakery\n" {
 		t.Errorf("OKf = %q", got)
 	}
-	if got := Errf(ErrCodeNoExit, MsgNoExit); got != "ERR 301 NO_EXIT\n" {
-		t.Errorf("Errf = %q, want \"ERR 301 NO_EXIT\\n\"", got)
+	if got := ErrNoExit.Wire(); got != "ERR 301 NO_EXIT\n" {
+		t.Errorf("ErrNoExit.Wire() = %q, want \"ERR 301 NO_EXIT\\n\"", got)
+	}
+	if got := BadRequest("UNKNOWN_COMMAND").Wire(); got != "ERR 400 UNKNOWN_COMMAND\n" {
+		t.Errorf("BadRequest.Wire() = %q, want \"ERR 400 UNKNOWN_COMMAND\\n\"", got)
 	}
 
 	// OKJson must produce valid JSON inside the "OK ...\n" envelope.

@@ -18,11 +18,11 @@ import (
 
 // WorldFile is the top-level schema of the world data file.
 type WorldFile struct {
-	StartRoom string               `json:"start_room"`
-	Rooms     map[string]RoomDef   `json:"rooms"`
-	Items     map[string]ItemDef   `json:"items"`
-	NPCs      map[string]NPCDef    `json:"npcs"`
-	Quests    map[string]QuestDef  `json:"quests"`
+	StartRoom string              `json:"start_room"`
+	Rooms     map[string]RoomDef  `json:"rooms"`
+	Items     map[string]ItemDef  `json:"items"`
+	NPCs      map[string]NPCDef   `json:"npcs"`
+	Quests    map[string]QuestDef `json:"quests"`
 }
 
 // RoomDef is the static definition of a room as it appears in the data file.
@@ -43,7 +43,7 @@ type ItemDef struct {
 // NPCDef is the static definition of an NPC.
 type NPCDef struct {
 	Name     string `json:"name"`
-	Role     string `json:"role"`     // e.g. "merchant", "guard", "enemy"
+	Role     string `json:"role"` // e.g. "merchant", "guard", "enemy"
 	HP       int    `json:"hp"`
 	Hostile  bool   `json:"hostile"`
 	Dialogue string `json:"dialogue"`

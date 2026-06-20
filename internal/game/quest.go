@@ -1,5 +1,5 @@
 /*
-Package game — Owner: Rui.
+Package game - Owner: Rui.
 
 File quest.go: TAP quest system.
 Quest progression per player: NotStarted → Active → Completed.

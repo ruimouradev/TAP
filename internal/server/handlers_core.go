@@ -1,4 +1,4 @@
-// handlers_core.go: the core verbs — connection, movement, presence and chat.
+// handlers_core.go: the core verbs - connection, movement, presence and chat.
 package server
 
 import (
@@ -8,57 +8,48 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleConnect: CONNECT <username>
-func handleConnect(h *Hub, c *Client, args []string) string {
+// handleConnect: CONNECT <username>. p is nil here - the player is created now.
+func handleConnect(h *Hub, c *Client, p *game.Player, args []string) string {
 	if c.username != "" {
-		return protocol.Errf(errBadRequest, "ALREADY_CONNECTED")
-	}
-	if len(args) < 1 {
-		return protocol.Errf(errBadRequest, "MISSING_USERNAME")
+		return protocol.BadRequest("ALREADY_CONNECTED").Wire()
 	}
 	name := args[0]
 	if _, err := h.world.AddPlayer(name); err != nil {
-		return protocol.Errf(protocol.ErrCodeNameInUse, protocol.MsgNameInUse)
+		return protocol.ErrNameInUse.Wire()
 	}
 	c.username = name
-	p := h.world.GetPlayer(name)
-	h.broadcast(p.CurrentRoom, protocol.RoomPresenceEnter(name), c)
+	np := h.world.GetPlayer(name)
+	h.broadcast(np.CurrentRoom, protocol.RoomPresenceEnter(name), c)
 	h.updatePlayerCount()
 	return protocol.OK("connected")
 }
 
-// handleQuit: QUIT — the client closes the connection on "OK bye"; the server's
+// handleQuit: QUIT - the client closes the connection on "OK bye"; the server's
 // readPump then sees the close and unregisters. The server never closes the
 // socket itself.
-func handleQuit(h *Hub, c *Client, args []string) string {
+func handleQuit(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OK("bye")
 }
 
-// handleLook: LOOK — current room state as JSON.
-func handleLook(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+// handleLook: LOOK - current room state as JSON.
+func handleLook(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKJson(buildLook(h, h.world.GetRoom(p.CurrentRoom)))
 }
 
 // handleMove: MOVE <direction>
-func handleMove(h *Hub, c *Client, args []string) string {
-	if len(args) < 1 {
-		return protocol.Errf(protocol.ErrCodeNoExit, protocol.MsgNoExit)
-	}
-	p := h.world.GetPlayer(c.username)
+func handleMove(h *Hub, c *Client, p *game.Player, args []string) string {
 	from := p.CurrentRoom
 	dest, err := h.world.MovePlayer(p, args[0])
 	if err != nil {
-		return protocol.Errf(protocol.ErrCodeNoExit, protocol.MsgNoExit)
+		return protocol.ErrNoExit.Wire()
 	}
 	h.broadcast(from, protocol.RoomPresenceLeave(c.username), c)
 	h.broadcast(dest.ID, protocol.RoomPresenceEnter(c.username), c)
 	return protocol.OKf("room=%s", dest.ID)
 }
 
-// handleWho: WHO — players in this room + total online, as JSON.
-func handleWho(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+// handleWho: WHO - players in this room + total online, as JSON.
+func handleWho(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKJson(protocol.WhoResponse{
 		Room:   h.world.PlayersInRoom(p.CurrentRoom),
 		Server: h.world.TotalPlayers(),
@@ -66,27 +57,22 @@ func handleWho(h *Hub, c *Client, args []string) string {
 }
 
 // handleChat: CHAT <GLOBAL|ROOM|GROUP> <message>
-func handleChat(h *Hub, c *Client, args []string) string {
-	if len(args) < 2 {
-		return protocol.Errf(errBadRequest, "BAD_CHAT")
-	}
+func handleChat(h *Hub, c *Client, p *game.Player, args []string) string {
 	scope := strings.ToUpper(args[0])
 	msg := sanitize(strings.Join(args[1:], " ")) // drop control chars before broadcasting
 	switch scope {
 	case "GLOBAL":
 		h.broadcastAll(protocol.GlobalChat(c.username, msg))
 	case "ROOM":
-		p := h.world.GetPlayer(c.username)
 		h.broadcast(p.CurrentRoom, protocol.RoomChat(c.username, msg), nil)
 	case "GROUP":
-		p := h.world.GetPlayer(c.username)
 		grp := h.groups[p.GroupID]
 		if grp == nil {
-			return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+			return protocol.ErrNotInGroup.Wire()
 		}
 		h.broadcastGroup(grp, protocol.GroupChat(c.username, msg), nil)
 	default:
-		return protocol.Errf(errBadRequest, "BAD_SCOPE")
+		return protocol.BadRequest("BAD_SCOPE").Wire()
 	}
 	return protocol.OK("")
 }

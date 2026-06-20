@@ -4,33 +4,30 @@ package server
 import (
 	"strings"
 
+	"the-answer-protocol/internal/game"
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleGroup: GROUP <CREATE|INVITE|JOIN|LEAVE> [args] — routes to a subcommand.
-func handleGroup(h *Hub, c *Client, args []string) string {
-	if len(args) < 1 {
-		return protocol.Errf(errBadRequest, "MISSING_SUBCOMMAND")
-	}
+// handleGroup: GROUP <CREATE|INVITE|JOIN|LEAVE> [args] - routes to a subcommand.
+func handleGroup(h *Hub, c *Client, p *game.Player, args []string) string {
 	switch strings.ToUpper(args[0]) {
 	case "CREATE":
-		return handleGroupCreate(h, c, args[1:])
+		return handleGroupCreate(h, c, p, args[1:])
 	case "INVITE":
-		return handleGroupInvite(h, c, args[1:])
+		return handleGroupInvite(h, c, p, args[1:])
 	case "JOIN":
-		return handleGroupJoin(h, c, args[1:])
+		return handleGroupJoin(h, c, p, args[1:])
 	case "LEAVE":
-		return handleGroupLeave(h, c, args[1:])
+		return handleGroupLeave(h, c, p, args[1:])
 	default:
-		return protocol.Errf(errBadRequest, "BAD_SUBCOMMAND")
+		return protocol.BadRequest("BAD_SUBCOMMAND").Wire()
 	}
 }
 
-// handleGroupCreate: GROUP CREATE — start a new group led by the caller.
-func handleGroupCreate(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+// handleGroupCreate: GROUP CREATE - start a new group led by the caller.
+func handleGroupCreate(h *Hub, c *Client, p *game.Player, args []string) string {
 	if p.GroupID != "" {
-		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+		return protocol.ErrAlreadyInGroup.Wire()
 	}
 	h.groups[c.username] = &Group{
 		ID:      c.username,
@@ -42,44 +39,42 @@ func handleGroupCreate(h *Hub, c *Client, args []string) string {
 	return protocol.OKf("group=%s", c.username)
 }
 
-// handleGroupInvite: GROUP INVITE <username> — the leader invites a player.
-func handleGroupInvite(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+// handleGroupInvite: GROUP INVITE <username> - the leader invites a player.
+func handleGroupInvite(h *Hub, c *Client, p *game.Player, args []string) string {
 	grp := h.groups[p.GroupID]
 	if grp == nil {
-		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+		return protocol.ErrNotInGroup.Wire()
 	}
 	if grp.Leader != c.username {
-		return protocol.Errf(errBadRequest, "NOT_GROUP_LEADER")
+		return protocol.BadRequest("NOT_GROUP_LEADER").Wire()
 	}
 	if len(args) < 1 {
-		return protocol.Errf(errBadRequest, "MISSING_USERNAME")
+		return protocol.BadRequest("MISSING_USERNAME").Wire()
 	}
 	target := h.clientByUsername(args[0])
 	if target == nil {
-		return protocol.Errf(errBadRequest, "NO_SUCH_PLAYER")
+		return protocol.BadRequest("NO_SUCH_PLAYER").Wire()
 	}
 	if tp := h.world.GetPlayer(target.username); tp.GroupID != "" {
-		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+		return protocol.ErrAlreadyInGroup.Wire()
 	}
 	target.invitedGroup = grp.ID
 	target.safeSend(protocol.GroupInvite(c.username))
 	return protocol.OK("invited")
 }
 
-// handleGroupJoin: GROUP JOIN — accept a pending invite.
-func handleGroupJoin(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+// handleGroupJoin: GROUP JOIN - accept a pending invite.
+func handleGroupJoin(h *Hub, c *Client, p *game.Player, args []string) string {
 	if p.GroupID != "" {
-		return protocol.Errf(protocol.ErrCodeAlreadyInGroup, protocol.MsgAlreadyInGroup)
+		return protocol.ErrAlreadyInGroup.Wire()
 	}
 	if c.invitedGroup == "" {
-		return protocol.Errf(errBadRequest, "NO_INVITE")
+		return protocol.BadRequest("NO_INVITE").Wire()
 	}
 	grp := h.groups[c.invitedGroup]
 	c.invitedGroup = ""
 	if grp == nil {
-		return protocol.Errf(errBadRequest, "GROUP_GONE")
+		return protocol.BadRequest("GROUP_GONE").Wire()
 	}
 	grp.Members[c.username] = c
 	p.GroupID = grp.ID
@@ -88,11 +83,10 @@ func handleGroupJoin(h *Hub, c *Client, args []string) string {
 	return protocol.OKf("group=%s", grp.ID)
 }
 
-// handleGroupLeave: GROUP LEAVE — leave the current group.
-func handleGroupLeave(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+// handleGroupLeave: GROUP LEAVE - leave the current group.
+func handleGroupLeave(h *Hub, c *Client, p *game.Player, args []string) string {
 	if p.GroupID == "" {
-		return protocol.Errf(protocol.ErrCodeNotInGroup, protocol.MsgNotInGroup)
+		return protocol.ErrNotInGroup.Wire()
 	}
 	h.leaveGroup(c, p)
 	h.log.Info("group left", "user", c.username)

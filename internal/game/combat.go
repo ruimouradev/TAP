@@ -1,4 +1,4 @@
-// combat.go: the combat system. Combat is turn-based — each ATTACK command is
+// combat.go: the combat system. Combat is turn-based - each ATTACK command is
 // one round. There is no persistent "in combat" state, so any command is valid
 // between rounds. The attacked NPC counter-attacks each round unless it is
 // defeated; when a player's HP reaches 0 they respawn at the start room with
@@ -29,7 +29,7 @@ var (
 
 // Damage of a single hit is a random value in [minDamage, maxDamage], for the
 // player and the NPC alike. Neither has separate attack/defense stats, so the
-// formula is intentionally simple — change the range to tune difficulty.
+// formula is intentionally simple - change the range to tune difficulty.
 const (
 	minDamage = 10
 	maxDamage = 20

@@ -1,5 +1,5 @@
 // world.go: the core domain model (World, Room, Player, NPC) and the
-// world-level operations. Only the Hub goroutine mutates these — no locks.
+// world-level operations. Only the Hub goroutine mutates these - no locks.
 package game
 
 import (

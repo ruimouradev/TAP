@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"time"
 
 	"the-answer-protocol/internal/protocol"
 )
@@ -25,9 +24,8 @@ type Client struct {
 	addr         string      // remote IP:port, kept for logging after close
 	log          *slog.Logger
 
-	// flood detection (only touched inside the Hub goroutine, so no lock)
-	cmdCount    int
-	windowStart time.Time
+	// command-flood detection (only touched inside the Hub goroutine, so no lock)
+	cmdRate rateWindow
 }
 
 func newClient(conn net.Conn, hub *Hub, log *slog.Logger) *Client {

@@ -31,7 +31,7 @@ Each connected client runs two goroutines:
 - **readPump** — reads lines from the TCP socket, parses them, and forwards `Command` structs to the Hub over the `commands` channel.
 - **writePump** — drains a buffered `send` channel and writes responses/events to the socket.
 
-The Hub's `select {}` loop handles `register` / `unregister` / `command` events one at a time. Commands are routed through a `verb → HandlerFunc` map (`internal/server/dispatch.go`); since handlers run inside the Hub goroutine, they read and mutate `h.world` directly with no locking.
+The Hub's `select {}` loop handles `register` / `unregister` / `command` events one at a time. Commands are routed through a **metadata-driven table** (`internal/server/dispatch.go`): each verb maps to a `Command{Handler, MinArgs, Anon, Usage}` spec, so the dispatcher enforces the authenticated-client check and the argument-count check in one place and the handlers stay thin (it also resolves the player once and passes it in). Since handlers run inside the Hub goroutine, they read and mutate `h.world` directly with no locking. Abuse monitoring (command flooding per client, rapid connections per IP) shares one sliding-window counter (`internal/server/ratelimit.go`), and wire errors are typed values (`protocol.Error{Code, Msg}`) so a code can never drift from its message.
 
 Back-pressure is handled by `safeSend`: the per-client `send` channel is buffered, and if it ever fills (a client too slow to drain) the Hub drops that connection instead of blocking — one slow client can never stall the whole server. Shutdown is graceful via `signal.NotifyContext` (Ctrl+C stops accepting and exits cleanly).
 
@@ -51,7 +51,7 @@ This implementation follows RFC 42TAP. Messages are line-based (`\n`-terminated,
 | `LOOK` (npcs)  | `"npcs":["npc.baker"]` | `"npcs":[{"id":"npc.baker","name":"Baker","hostile":false}]` | Same as above, plus `hostile` flag so the GUI can colour enemies differently |
 | `INVENTORY` | `OK ["item.herbs"]` | `OK [{"id":"item.herbs","name":"Healing Herbs"}]` | Same reasoning: GUI needs names to display inventory |
 
-All deviations remain ABNF-compliant: the RFC's `response-data` production is `1*VCHAR`, so any JSON payload is valid. The V.5 examples in the subject are illustrative — the same examples already deviate from the RFC for `TALK` and `WHO`, confirming they are not literal specifications.
+All deviations remain ABNF-compliant. The RFC's grammar is `response-line = ("OK" / error-response) [SP response-data] LF`, and `response-data` is referenced but **never defined** — so the grammar does not constrain what follows `OK `, and any JSON payload conforms. The subject's own examples even deviate from the ABNF (they show spaces inside JSON, which a stricter reading would forbid), confirming the examples are illustrative rather than literal specifications.
 
 For interoperability with other groups' servers that follow the V.5 example formats, the GUI parses both shapes (plain ID string OR `{id, name}` object) inside `cmd/gui/main.go` (in the LOOK/INVENTORY response handlers) and normalises them before rendering.
 
@@ -137,11 +137,14 @@ Uses Go's `log/slog` with a **JSON handler**, written to **stdout** (redirect wi
 | Group change | `group created/joined/left` | INFO | `user`, `group` |
 | Quest event | `quest started` / `quest completed` | INFO | `user`, `quest`, `reward` |
 | Abuse (flooding) | `possible command flood` | **WARN** | `user`, `addr`, `count`, `window` |
+| Abuse (rapid conns) | `possible rapid connections` | **WARN** | `addr`, `count`, `window` |
 | Startup / fatal | `server listening`, `load world`, … | INFO / ERROR | `addr`, `err` |
 
 **Log levels**: INFO for normal activity, **WARN** for error responses and abuse, **ERROR** for fatal startup failures.
 
-**Abuse detection** (`trackFlood`, `internal/server/dispatch.go`): each client's commands are counted in a sliding **1-second window**; more than **20 commands** in a window logs one `possible command flood` WARN. We *monitor and log* rather than disconnect (the spec asks for monitoring). Rapid reconnections are observable through the `client connected` lines (each carries the IP and timestamp); automatic per-IP reconnection detection is not implemented.
+**Abuse detection**: we *monitor and log* rather than disconnect (the spec asks for monitoring). Two patterns are detected:
+- **Command flooding** (`trackFlood`, `internal/server/dispatch.go`): each client's commands are counted in a sliding **1-second window**; more than **20 commands** in a window logs one `possible command flood` WARN.
+- **Rapid connections** (`trackRapidConnections`, `internal/server/hub.go`): connections are counted per IP in a sliding **10-second window**; more than **5 connections** from one IP logs one `possible rapid connections` WARN.
 
 Example output:
 ```json
@@ -211,11 +214,15 @@ Run from the project root (the race detector catches concurrency bugs):
 ```bash
 go test -race ./...        # all packages
 go test -race ./internal/server -v   # server integration tests, case by case
+go test -fuzz=FuzzParse ./internal/protocol   # fuzz the command parser
 ```
 
 The suite covers the protocol (parsing, responses, events), the game core
 (world, items, combat, quests) and the server end-to-end over real TCP
 (vertical slice, presence/chat, items, combat, groups, quests, duplicate names).
+The command parser is also **fuzz-tested** (`FuzzParse`): Go generates thousands
+of malformed lines and checks `Parse` never panics and that any accepted line has
+a non-empty, upper-cased verb.
 
 ### Multiplayer (manual)
 
