@@ -1,14 +1,22 @@
 // hub.go: the heart of all server concurrency. The Hub is the ONLY goroutine
 // that reads or mutates game state. Clients talk to it through channels, and it
-// handles one event at a time in its select loop — so no mutexes are needed.
+// handles one event at a time in its select loop - so no mutexes are needed.
 package server
 
 import (
 	"log/slog"
 	"net"
+	"time"
 
 	"the-answer-protocol/internal/game"
 	"the-answer-protocol/internal/protocol"
+)
+
+// Rapid-connection detection: more than connLimit connections from one IP within
+// connWindow is logged as a possible abuse pattern (we monitor, not block).
+const (
+	connWindow = 10 * time.Second
+	connLimit  = 5
 )
 
 // Hub is the central actor that owns the game world.
@@ -16,10 +24,13 @@ type Hub struct {
 	register   chan *Client
 	unregister chan *Client
 	commands   chan incomingCmd
-	clients    map[*Client]bool
-	groups     map[string]*Group // groupID → Group (empty until groups exist)
-	world      *game.World       // only the Hub touches this
+	clients    map[*Client]struct{} // set of connected clients
+	groups     map[string]*Group    // groupID -> Group (empty until groups exist)
+	world      *game.World          // only the Hub touches this
 	log        *slog.Logger
+
+	// rapid-connection tracking per IP (only touched in the Hub goroutine, no lock)
+	connRate map[string]*rateWindow
 }
 
 // incomingCmd pairs a parsed command with the client who sent it.
@@ -40,10 +51,11 @@ func NewHub(world *game.World, log *slog.Logger) *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		commands:   make(chan incomingCmd),
-		clients:    make(map[*Client]bool),
+		clients:    make(map[*Client]struct{}),
 		groups:     make(map[string]*Group),
 		world:      world,
 		log:        log,
+		connRate:   make(map[string]*rateWindow),
 	}
 }
 
@@ -62,12 +74,13 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case c := <-h.register:
-			h.clients[c] = true
+			h.clients[c] = struct{}{}
+			h.trackRapidConnections(c)
 			h.log.Info("client connected", "addr", c.addr)
 			c.safeSend(protocol.OKf("hello proto=%d", 1))
 
 		case c := <-h.unregister:
-			if h.clients[c] {
+			if _, ok := h.clients[c]; ok {
 				h.removeClient(c) // remove state + broadcast LEAVE
 				delete(h.clients, c)
 				close(c.send) // ends writePump
@@ -77,7 +90,7 @@ func (h *Hub) Run() {
 		case ic := <-h.commands:
 			// ignore commands from a client already gone (register/unregister
 			// and commands arrive on different channels and may reorder)
-			if h.clients[ic.client] {
+			if _, ok := h.clients[ic.client]; ok {
 				h.dispatch(ic.client, ic.cmd)
 			}
 		}
@@ -169,4 +182,22 @@ func (h *Hub) leaveGroup(c *Client, p *game.Player) {
 // updatePlayerCount tells everyone the current player total.
 func (h *Hub) updatePlayerCount() {
 	h.broadcastAll(protocol.StatsPlayers(h.world.TotalPlayers()))
+}
+
+// trackRapidConnections counts connections per IP in a sliding window and logs a
+// WARN when one IP crosses the limit (abuse monitoring, not blocking). Runs in
+// the Hub goroutine on register, so the maps need no lock.
+func (h *Hub) trackRapidConnections(c *Client) {
+	host, _, err := net.SplitHostPort(c.addr)
+	if err != nil {
+		host = c.addr // fall back to the raw address if there's no port
+	}
+	w := h.connRate[host]
+	if w == nil {
+		w = &rateWindow{}
+		h.connRate[host] = w
+	}
+	if w.exceeded(time.Now(), connLimit, connWindow) {
+		h.log.Warn("possible rapid connections", "addr", host, "count", w.count, "window", connWindow.String())
+	}
 }

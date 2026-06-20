@@ -4,21 +4,29 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"the-answer-protocol/internal/game"
 )
 
-// startServer runs a Hub on the given world and returns its listening address.
+// startServer runs a Hub on the given world (logs discarded) and returns its address.
 func startServer(t *testing.T, world *game.World) string {
+	return startServerLog(t, world, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// startServerLog is like startServer but sends logs to the given logger, so a
+// test can capture them (e.g. to assert abuse warnings are emitted).
+func startServerLog(t *testing.T, world *game.World, log *slog.Logger) string {
 	t.Helper()
-	hub := NewHub(world, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	hub := NewHub(world, log)
 	go hub.Run()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -38,10 +46,9 @@ func startServer(t *testing.T, world *game.World) string {
 	return ln.Addr().String()
 }
 
-// newTestServer starts a Hub on a tiny 2-room world and returns its address.
-func newTestServer(t *testing.T) string {
-	t.Helper()
-	world := &game.World{
+// testWorld builds a tiny 2-room world used by the integration tests.
+func testWorld() *game.World {
+	return &game.World{
 		Rooms: map[string]*game.Room{
 			"loc.square": {ID: "loc.square", Name: "Square", Description: "a square",
 				Exits: map[string]string{"north": "loc.bakery"},
@@ -54,7 +61,12 @@ func newTestServer(t *testing.T) string {
 		StartRoom: "loc.square",
 		Quests:    map[string]*game.QuestDef{},
 	}
-	return startServer(t, world)
+}
+
+// newTestServer starts a Hub on a tiny 2-room world and returns its address.
+func newTestServer(t *testing.T) string {
+	t.Helper()
+	return startServer(t, testWorld())
 }
 
 type testClient struct {
@@ -199,7 +211,7 @@ func TestItemsAndTalk(t *testing.T) {
 
 	// take by multi-word display name
 	alice.send("TAKE Gold Coin")
-	if g := alice.response(); g != "OK took item.coin" {
+	if g := alice.response(); g != "OK taken=item.coin" {
 		t.Fatalf("TAKE = %q", g)
 	}
 
@@ -217,7 +229,7 @@ func TestItemsAndTalk(t *testing.T) {
 
 	// drop by ID puts it back on the floor
 	alice.send("DROP item.coin")
-	if g := alice.response(); g != "OK dropped item.coin" {
+	if g := alice.response(); g != "OK dropped=item.coin" {
 		t.Fatalf("DROP = %q", g)
 	}
 
@@ -289,7 +301,7 @@ func TestCombatAndStatus(t *testing.T) {
 		t.Fatalf("ATTACK Goblin = %q", g)
 	}
 
-	// the defeated goblin is gone — attacking again returns NPC_NOT_FOUND
+	// the defeated goblin is gone - attacking again returns NPC_NOT_FOUND
 	alice.send("ATTACK Goblin")
 	if g := alice.response(); g != "ERR 404 NPC_NOT_FOUND" {
 		t.Fatalf("re-ATTACK Goblin = %q", g)
@@ -411,7 +423,7 @@ func TestQuestFlow(t *testing.T) {
 
 	// do the objective: pick up the herbs
 	alice.send("TAKE Healing Herbs")
-	if g := alice.response(); g != "OK took item.herbs" {
+	if g := alice.response(); g != "OK taken=item.herbs" {
 		t.Fatalf("TAKE = %q", g)
 	}
 
@@ -441,5 +453,164 @@ func TestDuplicateName(t *testing.T) {
 	dup.send("CONNECT alice")
 	if g := dup.response(); g != "ERR 201 NAME_IN_USE" {
 		t.Fatalf("duplicate CONNECT = %q", g)
+	}
+}
+
+// readEvent reads lines until one starts with prefix, then returns it.
+func (tc *testClient) readEvent(prefix string) string {
+	tc.t.Helper()
+	for {
+		line, err := tc.readLine()
+		if err != nil {
+			tc.t.Fatalf("waiting for %q: %v", prefix, err)
+		}
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+}
+
+// syncBuffer is a goroutine-safe buffer: the Hub logs from its own goroutine
+// while the test reads, so the writes need to be guarded.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestGroupFlow exercises the whole party lifecycle and the group-scoped events.
+func TestGroupFlow(t *testing.T) {
+	addr := newTestServer(t)
+	leader := connect(t, addr, "leader")
+	defer leader.close()
+	member := connect(t, addr, "member") // leader sees member ENTER
+	defer member.close()
+
+	leader.send("GROUP CREATE")
+	if g := leader.response(); g != "OK group=leader" {
+		t.Fatalf("CREATE = %q", g)
+	}
+
+	leader.send("GROUP INVITE member")
+	if g := leader.response(); g != "OK invited" {
+		t.Fatalf("INVITE = %q", g)
+	}
+	member.readEvent("EVT GROUP INVITE leader")
+
+	member.send("GROUP JOIN")
+	if g := member.response(); g != "OK group=leader" {
+		t.Fatalf("JOIN = %q", g)
+	}
+	leader.readEvent("EVT GROUP JOIN member")
+
+	leader.send("CHAT GROUP hello")
+	if g := leader.response(); g != "OK" {
+		t.Fatalf("CHAT GROUP = %q", g)
+	}
+	if e := member.readEvent("EVT GROUP CHAT"); e != "EVT GROUP CHAT leader hello" {
+		t.Fatalf("group chat event = %q", e)
+	}
+
+	member.send("GROUP LEAVE")
+	if g := member.response(); g != "OK left" {
+		t.Fatalf("LEAVE = %q", g)
+	}
+	leader.readEvent("EVT GROUP LEAVE member")
+}
+
+// TestGroupDisbandOnLeaderLeave checks that the group dissolves when the leader
+// leaves: the remaining member is notified and is no longer in a group.
+func TestGroupDisbandOnLeaderLeave(t *testing.T) {
+	addr := newTestServer(t)
+	leader := connect(t, addr, "leader")
+	defer leader.close()
+	member := connect(t, addr, "member")
+	defer member.close()
+
+	leader.send("GROUP CREATE")
+	leader.response()
+	leader.send("GROUP INVITE member")
+	leader.response()
+	member.readEvent("EVT GROUP INVITE")
+	member.send("GROUP JOIN")
+	member.response()
+	leader.readEvent("EVT GROUP JOIN")
+
+	// leader leaves → group disbands → member gets a LEAVE for the leader
+	leader.send("GROUP LEAVE")
+	if g := leader.response(); g != "OK left" {
+		t.Fatalf("leader LEAVE = %q", g)
+	}
+	member.readEvent("EVT GROUP LEAVE leader")
+
+	// member is now group-less, so leaving again is an error
+	member.send("GROUP LEAVE")
+	if g := member.response(); g != "ERR 401 NOT_IN_GROUP" {
+		t.Fatalf("member LEAVE after disband = %q", g)
+	}
+}
+
+// TestChatSanitizesControlChars makes sure control characters are stripped from
+// chat before being broadcast to other players.
+func TestChatSanitizesControlChars(t *testing.T) {
+	addr := newTestServer(t)
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+	bob := connect(t, addr, "bob")
+	defer bob.close()
+
+	alice.send("CHAT GLOBAL hi\x07there") // embedded BEL control char
+	if g := alice.response(); g != "OK" {
+		t.Fatalf("CHAT = %q", g)
+	}
+
+	got := bob.readEvent("EVT GLOBAL CHAT")
+	if strings.ContainsAny(got, "\x00\x07\x1b") {
+		t.Fatalf("broadcast still has control chars: %q", got)
+	}
+	if got != "EVT GLOBAL CHAT alice hithere" {
+		t.Fatalf("sanitized chat = %q", got)
+	}
+}
+
+// TestCommandFloodLogged verifies that crossing the per-client command rate
+// limit emits a single abuse warning.
+func TestCommandFloodLogged(t *testing.T) {
+	buf := &syncBuffer{}
+	addr := startServerLog(t, testWorld(), slog.New(slog.NewTextHandler(buf, nil)))
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+
+	for i := 0; i < floodLimit+2; i++ {
+		alice.send("LOOK")
+		alice.response()
+	}
+	if !strings.Contains(buf.String(), "possible command flood") {
+		t.Fatalf("expected flood warning, log = %q", buf.String())
+	}
+}
+
+// TestRapidConnectionsLogged verifies that too many connections from one IP emit
+// a rapid-connection warning. All test clients dial from 127.0.0.1.
+func TestRapidConnectionsLogged(t *testing.T) {
+	buf := &syncBuffer{}
+	addr := startServerLog(t, testWorld(), slog.New(slog.NewTextHandler(buf, nil)))
+	for i := 0; i <= connLimit; i++ { // connLimit+1 connections crosses the limit
+		c := connect(t, addr, fmt.Sprintf("u%d", i))
+		defer c.close()
+	}
+	if !strings.Contains(buf.String(), "possible rapid connections") {
+		t.Fatalf("expected rapid-connection warning, log = %q", buf.String())
 	}
 }

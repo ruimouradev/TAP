@@ -25,15 +25,9 @@ func OKf(format string, args ...any) string {
 func OKJson(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return Errf(ErrCodeSendFailed, MsgSendFailed)
+		return ErrSendFailed.Wire()
 	}
 	return OK(string(b))
-}
-
-// Errf formats an error response: "ERR <code> <message>\n".
-func Errf(code int, msg string) string {
-	// %03d: error codes are always 3 digits (RFC ABNF)
-	return fmt.Sprintf("ERR %03d %s\n", code, msg)
 }
 
 // ── Response structs (shared contract between server handlers and GUI) ────────

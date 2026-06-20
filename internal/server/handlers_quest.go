@@ -8,16 +8,12 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleQuest: QUEST <npc> — request a quest from a quest-giver NPC.
-func handleQuest(h *Hub, c *Client, args []string) string {
-	if len(args) < 1 {
-		return protocol.Errf(errBadRequest, "MISSING_NPC")
-	}
-	p := h.world.GetPlayer(c.username)
+// handleQuest: QUEST <npc> - request a quest from a quest-giver NPC.
+func handleQuest(h *Hub, c *Client, p *game.Player, args []string) string {
 	room := h.world.GetRoom(p.CurrentRoom)
 	def, err := game.GetQuestFromNPC(h.world, p, room, strings.Join(args, " "))
 	if err != nil {
-		return protocol.Errf(protocol.ErrCodeNoQuestAvailable, protocol.MsgNoQuestAvailable)
+		return protocol.ErrNoQuestAvailable.Wire()
 	}
 	game.StartQuest(p, def)
 	h.log.Info("quest started", "user", c.username, "quest", def.ID)
@@ -30,10 +26,9 @@ func handleQuest(h *Hub, c *Client, args []string) string {
 	})
 }
 
-// handleQuests: QUESTS — list the player's quests. Any active quest whose
+// handleQuests: QUESTS - list the player's quests. Any active quest whose
 // objective is now met is completed here (and its reward granted) before listing.
-func handleQuests(h *Hub, c *Client, args []string) string {
-	p := h.world.GetPlayer(c.username)
+func handleQuests(h *Hub, c *Client, p *game.Player, args []string) string {
 	entries := make([]protocol.QuestsEntry, 0, len(p.Quests))
 	for _, pq := range game.ListQuests(p) {
 		if pq.State == game.QuestActive && game.CheckCompletion(p, pq) {
