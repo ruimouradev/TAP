@@ -28,8 +28,8 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,7 +46,7 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// commandTimeout is how long we wait for a server response before 
+// commandTimeout is how long we wait for a server response before
 // assuming the command was lost or the server is out of sync.
 const commandTimeout = 5 * time.Second
 
@@ -58,8 +58,8 @@ type pendingCmd struct {
 // CommandQueue is a thread-safe FIFO queue to track pending commands.
 // This ensures responses are always mapped to the correct command.
 type CommandQueue struct {
-	mu    sync.Mutex
-	cmds  []pendingCmd
+	mu   sync.Mutex
+	cmds []pendingCmd
 }
 
 func (q *CommandQueue) Push(verb string) {
@@ -166,9 +166,9 @@ func main() {
 
 	//   5. If connection succeeds, start readLoop.
 	if err != nil {
-		// log.Fatalf prints the error and calls os.Exit(1) immediately, 
-        // preventing a nil-pointer crash later down the line.
-        log.Fatalf("❌ Critical Error: Failed to connect to server at %s: %v", addr, err)
+		// log.Fatalf prints the error and calls os.Exit(1) immediately,
+		// preventing a nil-pointer crash later down the line.
+		log.Fatalf("❌ Critical Error: Failed to connect to server at %s: %v", addr, err)
 	} else {
 		globalConn = conn
 
@@ -192,7 +192,7 @@ func main() {
 					applyResponse(line)
 				}
 			}
-		// () tells Go to immediately invoke (execute)
+			// () tells Go to immediately invoke (execute)
 		}()
 
 		//   8. Login Dialog: Force CONNECT before starting
@@ -205,7 +205,7 @@ func main() {
 		// Popup form: []*widget.FormItem{...}: array containing the rows of the form
 		loginForm := dialog.NewForm("Welcome to TAP", "Connect", "Cancel", []*widget.FormItem{
 			{Text: "Username", Widget: usernameEntry},
-		// The callback function. Code that sits dormant until player clicks one of the two buttons.
+			// The callback function. Code that sits dormant until player clicks one of the two buttons.
 		}, func(ok bool) {
 			if ok && usernameEntry.Text != "" {
 				myUsername = usernameEntry.Text
@@ -516,7 +516,7 @@ func promptAndSend(parent fyne.Window, conn net.Conn, title, placeholder, verb s
 }
 
 // buildActionBar returns the row of buttons that map 1:1 to protocol
-// verbs (LOOK, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS).
+// verbs (LOOK, WHO, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS).
 // Each button calls sendCommand with the appropriate verb.
 func buildActionBar(parent fyne.Window, conn net.Conn) fyne.CanvasObject {
 	groupActionContainer = container.NewHBox(
@@ -538,6 +538,7 @@ func buildActionBar(parent fyne.Window, conn net.Conn) fyne.CanvasObject {
 
 	return container.NewHBox(
 		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }), // LOOK button remains
+		widget.NewButton("WHO", func() { logCommand(sendCommand(conn, "WHO")) }),
 		// MOVE buttons are now dynamically generated in the room panel
 		widget.NewButton("TAKE", func() {
 			if selectedRoomItemID != "" {
@@ -623,7 +624,7 @@ func applyResponse(line string) {
 
 	// If the queue is now empty, hide the activity indicator (with nil check)
 	if pendingCommands.Len() == 0 && statusBusyLabel != nil {
-		// We use a tiny delay before clearing to ensure the "pulse" is visible 
+		// We use a tiny delay before clearing to ensure the "pulse" is visible
 		// to the human eye even on super-fast localhost connections.
 		time.AfterFunc(300*time.Millisecond, func() {
 			if pendingCommands.Len() == 0 {
@@ -712,6 +713,29 @@ func initResponseHandlers() {
 				// Chain refresh: LOOK success triggers INVENTORY sync
 				logCommand(sendCommand(globalConn, "INVENTORY"))
 			}
+		},
+		"WHO": func(payload string) {
+			// Explicitly map to the server's protocol.WhoResponse struct
+			var who protocol.WhoResponse
+			currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+			formatted := ""
+
+			if err := json.Unmarshal([]byte(payload), &who); err == nil {
+				sort.Strings(who.Room)
+				playersInRoom := strings.Join(who.Room, "\n - ")
+				if len(who.Room) == 0 {
+					playersInRoom = "No other players"
+				}
+
+				formatted = fmt.Sprintf("\n[WHO] Server Activity:\n - Total connected: %d\n - Active in room (%d):\n - %s\n", 
+					who.Server, len(who.Room), playersInRoom)
+			} else {
+				// Fallback to displaying raw payload string if the structure differs
+				formatted = fmt.Sprintf("\n[WHO] Online Players:\n%s\n", strings.TrimSpace(payload))
+			}
+
+			interactionLog.SetText(currentText + formatted)
+			interactionScroll.ScrollToBottom()
 		},
 		"GROUP": func(payload string) {
 			if strings.HasPrefix(payload, "group=") {
@@ -808,7 +832,7 @@ func initResponseHandlers() {
 			}
 		},
 		"CHAT": func(payload string) {
-			// CHAT commands typically return "OK" with no data. 
+			// CHAT commands typically return "OK" with no data.
 			// No specific UI update needed here as we wait for EVT CHAT.
 		},
 	}
