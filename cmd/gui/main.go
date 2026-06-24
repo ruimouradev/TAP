@@ -108,9 +108,36 @@ var (
 	groupMembers    []string
 	globalConn      net.Conn
 	activeChatScope = "GLOBAL"
+	currentTheme    = themeModern
+	currentApp      fyne.App
 	// responseHandlers maps a Verb to the logic that handles its OK payload
 	responseHandlers map[string]func(payload string)
 )
+
+type themeMode string
+
+const (
+	themeModern themeMode = "MODERN"
+	themeRetro  themeMode = "RETRO"
+)
+
+func applyTheme(app fyne.App, mode themeMode) {
+	currentTheme = mode
+	switch mode {
+	case themeRetro:
+		app.Settings().SetTheme(&RetroTheme{Theme: theme.DefaultTheme()})
+	default:
+		currentTheme = themeModern
+		app.Settings().SetTheme(&ModernTheme{Theme: theme.DefaultTheme()})
+	}
+}
+
+func nextThemeLabel() string {
+	if currentTheme == themeModern {
+		return "RETRO"
+	}
+	return "MODERN"
+}
 
 // main creates the Fyne app, opens the connection to the server, wires
 // the read goroutine to the UI, and starts the event loop.
@@ -120,7 +147,13 @@ func main() {
 
 	//   2. Create app and Window("TAP")
 	a := app.New()
+	currentApp = a
+
+	// Apply the default theme, but keep both themes available via toggle.
+	applyTheme(a, themeModern)
+
 	w := a.NewWindow("TAP")
+	w.SetFixedSize(true)
 
 	// Initialize global widgets used by network handlers early to avoid nil-pointer panics
 	// if the server responds before the UI layout is fully rendered.
@@ -229,7 +262,7 @@ func main() {
 		),
 	)
 	//  container.NewBorder(top, bottom, left, right, center)
-	w.SetContent(container.NewBorder(buildStatusBar(), buildActionBar(w, conn), nil, nil, mainCenter))
+	w.SetContent(container.NewBorder(buildStatusBar(currentApp), buildActionBar(w, conn), nil, nil, mainCenter))
 
 	// Use Run instead of ShowAndRun since we already called w.Show() to display the dialog
 	a.Run()
@@ -537,39 +570,54 @@ func buildActionBar(parent fyne.Window, conn net.Conn) fyne.CanvasObject {
 	}
 
 	return container.NewHBox(
-		widget.NewButton("LOOK", func() { logCommand(sendCommand(conn, "LOOK")) }), // LOOK button remains
-		widget.NewButton("WHO", func() { logCommand(sendCommand(conn, "WHO")) }),
-		// MOVE buttons are now dynamically generated in the room panel
-		widget.NewButton("TAKE", func() {
+		widget.NewLabelWithStyle("Quick", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewButtonWithIcon("LOOK", theme.SearchIcon(), func() { logCommand(sendCommand(conn, "LOOK")) }),
+		widget.NewButtonWithIcon("WHO", theme.AccountIcon(), func() { logCommand(sendCommand(conn, "WHO")) }),
+		widget.NewButtonWithIcon("STATUS", theme.InfoIcon(), func() { logCommand(sendCommand(conn, "STATUS")) }),
+		widget.NewButtonWithIcon("QUIT", theme.WindowCloseIcon(), func() { logCommand(sendCommand(conn, "QUIT")) }),
+		layout.NewSpacer(),
+		widget.NewLabelWithStyle("Context", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		// MOVE buttons are now dynamically generated in the room panel.
+		widget.NewButtonWithIcon("TAKE", theme.ContentAddIcon(), func() {
 			if selectedRoomItemID != "" {
 				logCommand(sendCommand(conn, "TAKE", selectedRoomItemID))
 			}
 		}),
-		widget.NewButton("TALK", func() {
+		widget.NewButtonWithIcon("TALK", theme.MailComposeIcon(), func() {
 			if selectedNPCID != "" {
 				logCommand(sendCommand(conn, "TALK", selectedNPCID))
 			}
 		}),
-		widget.NewButton("ATTACK", func() {
+		widget.NewButtonWithIcon("ATTACK", theme.WarningIcon(), func() {
 			if selectedNPCID != "" {
 				logCommand(sendCommand(conn, "ATTACK", selectedNPCID))
 			}
 		}),
-		widget.NewButton("STATUS", func() { logCommand(sendCommand(conn, "STATUS")) }),
-		widget.NewButton("QUEST", func() {
+		widget.NewButtonWithIcon("QUEST", theme.DocumentCreateIcon(), func() {
 			if selectedNPCID != "" {
 				logCommand(sendCommand(conn, "QUEST", selectedNPCID))
 			}
 		}),
-		widget.NewButton("QUESTS", func() { logCommand(sendCommand(conn, "QUESTS")) }),
-		widget.NewButton("QUIT", func() { logCommand(sendCommand(conn, "QUIT")) }),
+		widget.NewButtonWithIcon("QUESTS", theme.ListIcon(), func() { logCommand(sendCommand(conn, "QUESTS")) }),
+		layout.NewSpacer(),
 		groupActionContainer,
 	)
 }
 
 // buildStatusBar returns the top/bottom bar with HP, players in room,
 // and players on server. Refreshed on STATUS responses and EVT STATS.
-func buildStatusBar() fyne.CanvasObject {
+func buildStatusBar(app fyne.App) fyne.CanvasObject {
+	var themeToggleButton *widget.Button
+	themeToggleButton = widget.NewButton(nextThemeLabel(), func() {
+		if currentTheme == themeModern {
+			applyTheme(app, themeRetro)
+		} else {
+			applyTheme(app, themeModern)
+		}
+		themeToggleButton.SetText(nextThemeLabel())
+		themeToggleButton.Refresh()
+	})
+
 	return container.NewHBox(
 		statusBusyLabel,
 		statusHPValue,
@@ -577,6 +625,8 @@ func buildStatusBar() fyne.CanvasObject {
 		statusRoomValue,
 		layout.NewSpacer(),
 		statusServerValue,
+		layout.NewSpacer(),
+		themeToggleButton,
 	)
 }
 
