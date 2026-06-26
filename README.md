@@ -98,7 +98,7 @@ Quests live in `internal/game/quest.go`. Two types are implemented (the RFC list
 
 **Rewards.** The reward is an item ID. On completion it is copied from the world item catalog (`World.Items`) into the player's inventory (with its proper display name).
 
-World quests: `quest.fetch_herbs` (from the Baker → reward `item.bread`) and `quest.defeat_goblin_chief` (from the Goblin Chief → reward `item.rusty_sword`).
+World quests: `quest.fetch_herbs` (from the Baker → reward `item.herbalist_token`, *Herbalist's Token*) and `quest.defeat_goblin_chief` (from the Goblin Chief → reward `item.chief_trophy`, *Goblin Chief's Trophy*). Reward items are **dedicated** — they are not placed anywhere in the world, so a granted reward never duplicates an item instance that already exists in a room.
 
 ---
 
@@ -122,9 +122,9 @@ The TAP world consists of 8 distinct rooms designed with a **circular loop struc
       Deep Forest
 ```
 
-NPC roles: merchant (Baker, Merchant), guard (Guard), enemy (Goblin, Goblin Chief).
+NPC roles (7 NPCs): **guard** (Guard — dialogue), **merchant** (Baker, Merchant, Innkeeper), **entertainer** (Bard — dialogue), **enemy** (Goblin, Goblin Chief). Quest-givers: Baker (`fetch`) and Goblin Chief (`defeat`).
 
-Items: Loaf of Bread, Healing Herbs (obtainable), Rusty Sword (obtainable), Ancient Relic.
+Items (8): Loaf of Bread, Healing Herbs, Rusty Sword, Ancient Relic, Silver Amulet, Torn Letter — all placed in rooms and obtainable with `TAKE` — plus two **dedicated quest rewards** (Herbalist's Token, Goblin Chief's Trophy) that exist only as rewards, never in a room.
 
 Quests: `fetch_herbs` (Baker), `defeat_goblin_chief` (Goblin Chief).
 
@@ -152,7 +152,7 @@ Uses Go's `log/slog` with a **JSON handler**, written to **stdout** (redirect wi
 **Log levels**: INFO for normal activity, **WARN** for error responses and abuse, **ERROR** for fatal startup failures.
 
 **Abuse detection**: we *monitor and log* rather than disconnect (the spec asks for monitoring). Two patterns are detected:
-- **Command flooding** (`trackFlood`, `internal/server/dispatch.go`): each client's commands are counted in a sliding **1-second window**; more than **20 commands** in a window logs one `possible command flood` WARN.
+- **Command flooding** (per client, `c.cmdRate` in `internal/server/dispatch.go`): each client's commands are counted in a sliding **1-second window**; more than **20 commands** in a window logs one `possible command flood` WARN.
 - **Rapid connections** (`trackRapidConnections`, `internal/server/hub.go`): connections are counted per IP in a sliding **10-second window**; more than **5 connections** from one IP logs one `possible rapid connections` WARN.
 
 Example output:
@@ -279,8 +279,8 @@ QUESTS             # shows "status":"active"
 MOVE south
 MOVE east          # -> market
 TAKE Healing Herbs # the quest objective
-QUESTS             # now "status":"completed" — reward (Loaf of Bread) granted
-INVENTORY          # contains item.bread
+QUESTS             # now "status":"completed" — reward (Herbalist's Token) granted
+INVENTORY          # contains item.herbalist_token
 ```
 
 ---
@@ -300,4 +300,4 @@ AI was used to support the learning process, specifically for:
 - Answering questions about Go concepts such as goroutines, channels, and the concurrency model
 - Discussing and evaluating different approaches to dividing the work between team members
 - Assisting with debugging by explaining error messages and suggesting possible causes
-- Structure and dratf the readme
+- Structuring and drafting the README

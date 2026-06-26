@@ -230,9 +230,12 @@ func main() {
 			// () tells Go to immediately invoke (execute)
 		}()
 
-		// Periodic background polling for LOOK to synchronize items, NPCs, and other player movements
+		// Safety-net background LOOK. Rooms now also update instantly via the
+		// server's EVT ROOM ITEM events, so this slow tick only covers edge cases
+		// (and other groups' servers that don't send those events); the long
+		// interval keeps the server log clean.
 		go func() {
-			ticker := time.NewTicker(3 * time.Second)
+			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
 			for range ticker.C {
 				if globalConn != nil && myUsername != "" {
@@ -999,6 +1002,9 @@ func applyEvent(line string) {
 				interactionLog.SetText(currentText + formatted)
 				interactionScroll.ScrollToBottom()
 			}
+		} else if strings.HasPrefix(data, "ITEM ") {
+			// another player took/dropped something here → refresh the room view
+			logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 		} else {
 			updateChatLog(chatRoomLog, chatRoomScroll, "[System] "+data+"\n")
 		}
