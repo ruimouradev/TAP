@@ -102,14 +102,18 @@ The TAP world consists of 8 distinct rooms designed with a **circular loop struc
 
 ### Map Layout
 
-```
-Village Square ── Bakery
-     |    |
-   Inn   Market ── Forest Path
-     |                   |
-   Gate            Deep Forest
-     |
- Forest Entrance ──────────────┘
+```text
+         Bakery       Forest Path ──────┐
+           |               |            |
+  Inn ── Village ─────── Market         |
+         Square                         |
+           |                            |
+          Gate                          |
+           |                            |
+         Forest ────────────────────────┘
+        Entrance
+           |
+      Deep Forest
 ```
 
 NPC roles: merchant (Baker, Merchant), guard (Guard), enemy (Goblin, Goblin Chief).
@@ -223,12 +227,25 @@ The command parser is also **fuzz-tested** (`FuzzParse`): Go generates thousands
 of malformed lines and checks `Parse` never panics and that any accepted line has
 a non-empty, upper-cased verb.
 
+### Network & buffering (manual)
+
+To verify that the server's TCP parser handles buffering correctly (including multiple commands sent in a single TCP packet or split packets), you can write raw commands directly to the server using `netcat` (`nc`):
+
+```bash
+# Send multiple commands inside a single TCP connection/packet:
+echo -e "CONNECT evaluator\nLOOK\nWHO" | nc localhost 4300
+```
+
+The server should process each command sequentially, replying with the respective protocol responses (e.g., `OK connected`, the room JSON state, and the server activity JSON) before closing the connection.
+
 ### Multiplayer (manual)
 
 Start the server, then open two terminals with `make run-client` and connect with
 different usernames. Verify:
 - `MOVE` broadcasts `EVT ROOM PRESENCE ENTER/LEAVE` to players in the room left/entered
 - `CHAT ROOM` reaches only the same room; `CHAT GLOBAL` reaches everyone
+- `Unicode & Encoding`: Send an emoji in a chat message `CHAT GLOBAL Hello 🌍` and verify it renders properly in both CLI and GUI clients without encoding errors
+- `Control Characters`: Send a chat message with a control character (e.g., `\x07` BEL) via `echo -e "CONNECT alice\nCHAT GLOBAL Hello\x07World" | nc localhost 4300` and verify that another connected client receives `EVT GLOBAL CHAT alice HelloWorld` (verifying that the control character is safely stripped by the server)
 - one player's `TAKE` removes the item from the room for the other
 - a group: `GROUP CREATE` / `GROUP INVITE <name>` / `GROUP JOIN` / `CHAT GROUP <msg>`
 
