@@ -89,8 +89,8 @@
       "takeable": true,
       "lore": "A fragment of a letter, the edges singed. A hastily scrawled name is still legible."
     },
-    "item.herbalist_token": {
-      "name": "Herbalist's Token",
+    "item.bakers_gratitude": {
+      "name": "Baker's Gratitude",
       "takeable": true
     },
     "item.chief_trophy": {
@@ -163,7 +163,7 @@
       "description": "The Baker asks you to bring a bundle of Healing Herbs from the market so she can bake a special remedy for an ill child.",
       "type": "fetch",
       "target": "item.herbs",
-      "reward": "item.herbalist_token"
+      "reward": "item.bakers_gratitude"
     },
     "quest.defeat_goblin_chief": {
       "description": "The village fears the Goblin Chief, whose raids have left tracks and stolen supplies. Defeat him and secure the Deep Forest.",
