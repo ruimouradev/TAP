@@ -17,6 +17,8 @@ func handleTake(h *Hub, c *Client, p *game.Player, args []string) string {
 		return protocol.ErrItemNotFound.Wire()
 	}
 	h.log.Info("item taken", "user", c.username, "item", it.ID, "room", p.CurrentRoom)
+	// tell the rest of the room so their view updates without polling
+	h.broadcast(p.CurrentRoom, protocol.RoomItemTaken(c.username, it.ID), c)
 	return protocol.OKf("taken=%s", it.ID)
 }
 
@@ -28,6 +30,8 @@ func handleDrop(h *Hub, c *Client, p *game.Player, args []string) string {
 		return protocol.ErrItemNotInInv.Wire()
 	}
 	h.log.Info("item dropped", "user", c.username, "item", it.ID, "room", p.CurrentRoom)
+	// tell the rest of the room so the item appears for them without polling
+	h.broadcast(p.CurrentRoom, protocol.RoomItemDropped(c.username, it.ID), c)
 	return protocol.OKf("dropped=%s", it.ID)
 }
 

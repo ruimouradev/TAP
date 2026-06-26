@@ -55,6 +55,12 @@ All deviations remain ABNF-compliant. The RFC's grammar is `response-line = ("OK
 
 For interoperability with other groups' servers that follow the V.5 example formats, the GUI parses both shapes (plain ID string OR `{id, name}` object) inside `cmd/gui/main.go` (in the LOOK/INVENTORY response handlers) and normalises them before rendering.
 
+**Extra room events.** Beyond the RFC's event list, the server broadcasts two extra room-scoped events, **only to players in the affected room**, so the shared world stays live without clients polling:
+- `EVT ROOM COMBAT <attacker> <target> <damage> <target_hp>` — others in the room see a fight as it happens.
+- `EVT ROOM ITEM TAKEN <player> <item_id>` / `EVT ROOM ITEM DROPPED <player> <item_id>` — others' room view updates instantly when an item is picked up or dropped.
+
+Both follow the standard `EVT <category> <type> [data]` shape, are scoped to the room (never leaked to other recipients), and are safely ignored by any client that does not recognise them.
+
 **Error code extension.** The RFC (§8.2) defines codes for game errors (201, 301, 401, 402, 404, 405, 406), which we follow exactly. For input the RFC does not define — unknown verb, command before `CONNECT`, missing arguments — we return `ERR 400 <reason>` (e.g. `UNKNOWN_COMMAND`, `NOT_CONNECTED`, `MISSING_ITEM`). `400` is our extension; the RFC only states malformed messages should yield an appropriate error.
 
 **Line handling.** Each connection is read with a `bufio.Scanner` whose buffer starts at 64&nbsp;KB and grows up to a **1&nbsp;MB** maximum line length, so very long (but valid) lines are accepted while a single unbounded line cannot exhaust memory. The protocol tolerates `CRLF` (a trailing `\r` is trimmed) and ignores blank lines.
