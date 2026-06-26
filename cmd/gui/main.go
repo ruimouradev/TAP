@@ -777,7 +777,7 @@ func initResponseHandlers() {
 					playersInRoom = "No other players"
 				}
 
-				formatted = fmt.Sprintf("\n[WHO] Server Activity:\n - Total connected: %d\n - Active in room (%d):\n - %s\n", 
+				formatted = fmt.Sprintf("\n[WHO] Server Activity:\n - Total connected: %d\n - Active in room (%d):\n - %s\n",
 					who.Server, len(who.Room), playersInRoom)
 			} else {
 				// Fallback to displaying raw payload string if the structure differs

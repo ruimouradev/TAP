@@ -39,7 +39,7 @@ export PATH   := $(GO_BIN_DIR):$(PATH)
 # -----------------------------------------------------------------------------
 # Rules and Targets
 # -----------------------------------------------------------------------------
-.PHONY: setup-go deps run-server run-client run-client-gui lint clean
+.PHONY: setup-go deps run-server run-client run-client-gui fmt lint clean
 
 setup-go:
 	@if [ ! -f $(CUSTOM_GO) ]; then \
@@ -65,6 +65,9 @@ run-client: setup-go
 
 run-client-gui: setup-go
 	$(GO) run ./cmd/gui
+
+fmt: setup-go
+	$(GO)fmt -w .
 
 lint: setup-go
 	$(GO)fmt -l . && $(GO) vet ./...

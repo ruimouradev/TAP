@@ -40,7 +40,7 @@ func (r *RetroTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) 
 	return r.Theme.Color(name, variant)
 }
 
-// Font returns the default font, but using a custom theme ensures 
+// Font returns the default font, but using a custom theme ensures
 // that all components react to the palette changes above.
 func (r *RetroTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return r.Theme.Font(style)
