@@ -42,6 +42,17 @@ func RoomCombat(attacker, target string, damage, targetHP int) string {
 	return fmt.Sprintf("EVT ROOM COMBAT %s %s %d %d\n", attacker, target, damage, targetHP)
 }
 
+// RoomItemTaken / RoomItemDropped tell the rest of the room that an item was
+// picked up or dropped, so other clients refresh their room view instantly
+// instead of polling. Not in the RFC's event list; documented as a deviation.
+func RoomItemTaken(username, itemID string) string {
+	return fmt.Sprintf("EVT ROOM ITEM TAKEN %s %s\n", username, itemID)
+}
+
+func RoomItemDropped(username, itemID string) string {
+	return fmt.Sprintf("EVT ROOM ITEM DROPPED %s %s\n", username, itemID)
+}
+
 func StatsPlayers(count int) string {
 	return fmt.Sprintf("EVT STATS players=%d\n", count)
 }
