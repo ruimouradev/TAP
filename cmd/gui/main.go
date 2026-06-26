@@ -973,7 +973,7 @@ func applyEvent(line string) {
 				sort.Strings(roomPlayersData)
 				roomPlayersValue.SetText(strings.Join(roomPlayersData, ", "))
 			}
-			updateChatLog(chatRoomLog, chatRoomScroll, "[System] " + newUser + " entered the room.\n")
+			updateChatLog(chatRoomLog, chatRoomScroll, "[System] "+newUser+" entered the room.\n")
 		} else if strings.HasPrefix(data, "PRESENCE LEAVE ") {
 			oldUser := strings.TrimPrefix(data, "PRESENCE LEAVE ")
 			var updated []string
@@ -985,7 +985,7 @@ func applyEvent(line string) {
 			roomPlayersData = updated
 			sort.Strings(roomPlayersData)
 			roomPlayersValue.SetText(strings.Join(roomPlayersData, ", "))
-			updateChatLog(chatRoomLog, chatRoomScroll, "[System] " + oldUser + " left the room.\n")
+			updateChatLog(chatRoomLog, chatRoomScroll, "[System] "+oldUser+" left the room.\n")
 		} else if strings.HasPrefix(data, "COMBAT ") {
 			parts := strings.Split(data, " ")
 			if len(parts) >= 5 {
@@ -993,7 +993,7 @@ func applyEvent(line string) {
 				target := parts[2]
 				damage := parts[3]
 				targetHp := parts[4]
-				
+
 				formatted := fmt.Sprintf("[Combat] %s attacked %s for %s damage! (Target HP: %s)\n", attacker, target, damage, targetHp)
 				currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
 				interactionLog.SetText(currentText + formatted)
