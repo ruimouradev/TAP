@@ -219,13 +219,26 @@ func main() {
 					continue
 				}
 				// Update UI in the main thread context
-				if strings.HasPrefix(line, "EVT ") {
-					applyEvent(line[4:])
-				} else {
-					applyResponse(line)
-				}
+				fyne.Do(func() {
+					if strings.HasPrefix(line, "EVT ") {
+						applyEvent(line[4:])
+					} else {
+						applyResponse(line)
+					}
+				})
 			}
 			// () tells Go to immediately invoke (execute)
+		}()
+
+		// Periodic background polling for LOOK to synchronize items, NPCs, and other player movements
+		go func() {
+			ticker := time.NewTicker(3 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				if globalConn != nil && myUsername != "" {
+					logCommand(sendBackgroundCommand(globalConn, "LOOK"))
+				}
+			}
 		}()
 
 		//   8. Login Dialog: Force CONNECT before starting
@@ -336,6 +349,23 @@ func sendCommand(conn net.Conn, verb string, args ...string) error {
 	return nil
 }
 
+// sendBackgroundCommand is identical to sendCommand but bypasses setting statusBusyLabel (hourglass icon).
+func sendBackgroundCommand(conn net.Conn, verb string, args ...string) error {
+	if conn == nil {
+		return fmt.Errorf("no connection")
+	}
+
+	cmd := protocol.Command{Verb: strings.ToUpper(verb), Args: args}
+	pendingCommands.Push(cmd.Verb)
+
+	line := cmd.String() + "\n"
+	_, err := conn.Write([]byte(line))
+	if err != nil {
+		return fmt.Errorf("sendBackgroundCommand write: %w", err)
+	}
+	return nil
+}
+
 var (
 	roomNameValue        *widget.Label
 	roomDescriptionValue *widget.Label
@@ -355,6 +385,7 @@ var (
 	interactionScroll    *container.Scroll
 	roomItemsData        []protocol.LookItem
 	roomNPCsData         []protocol.LookNPC
+	roomPlayersData      []string
 	inventoryItems       *widget.List
 	inventorySelected    *widget.Label
 	statusHPValue        *widget.Label
@@ -416,7 +447,6 @@ func buildRoomPanel() fyne.CanvasObject {
 	roomPlayersValue.Wrapping = fyne.TextWrapWord
 
 	content := container.NewVBox(
-		widget.NewLabelWithStyle("Room", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewLabelWithStyle("Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		roomNameValue,
 		widget.NewLabelWithStyle("Description", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -637,7 +667,12 @@ func updateMoveButtons(exits map[string]string) {
 	if len(exits) == 0 {
 		moveButtonsContainer.Add(widget.NewLabel("No exits available."))
 	} else {
-		for dir := range exits {
+		keys := make([]string, 0, len(exits))
+		for k := range exits {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, dir := range keys {
 			direction := dir // Capture loop variable for the closure
 			btn := widget.NewButton("MOVE "+strings.ToUpper(direction), func() {
 				logCommand(sendCommand(globalConn, "MOVE", direction))
@@ -646,6 +681,9 @@ func updateMoveButtons(exits map[string]string) {
 		}
 	}
 	moveButtonsContainer.Refresh() // Important to refresh the container after adding/removing children
+	if currentApp != nil && len(currentApp.Driver().AllWindows()) > 0 {
+		currentApp.Driver().AllWindows()[0].Content().Refresh()
+	}
 }
 
 func updateGroupDisplay(groupID string) {
@@ -677,10 +715,12 @@ func applyResponse(line string) {
 		// We use a tiny delay before clearing to ensure the "pulse" is visible
 		// to the human eye even on super-fast localhost connections.
 		time.AfterFunc(300*time.Millisecond, func() {
-			if pendingCommands.Len() == 0 {
-				statusBusyLabel.Text = "  "
-				statusBusyLabel.Refresh()
-			}
+			fyne.Do(func() {
+				if pendingCommands.Len() == 0 {
+					statusBusyLabel.Text = "  "
+					statusBusyLabel.Refresh()
+				}
+			})
 		})
 	}
 
@@ -712,7 +752,7 @@ func applyResponse(line string) {
 func initResponseHandlers() {
 	responseHandlers = map[string]func(string){
 		"CONNECT": func(payload string) {
-			logCommand(sendCommand(globalConn, "LOOK"))
+			logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 		},
 		"QUIT": func(payload string) {
 			// Server acknowledged the quit, now we can safely close the app
@@ -722,19 +762,19 @@ func initResponseHandlers() {
 			if strings.HasPrefix(payload, "room=") {
 				roomID := strings.TrimPrefix(payload, "room=")
 				statusRoomValue.SetText("Room: " + roomID)
-				logCommand(sendCommand(globalConn, "LOOK"))
+				logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 			}
 		},
 		"TAKE": func(payload string) {
 			roomItemsList.UnselectAll()
 			selectedRoomItemID = ""
-			logCommand(sendCommand(globalConn, "LOOK"))
+			logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 		},
 		"DROP": func(payload string) {
 			inventoryItems.UnselectAll()
 			inventorySelected.SetText("Selected item: --")
 			selectedItemID = ""
-			logCommand(sendCommand(globalConn, "LOOK"))
+			logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 		},
 		"LOOK": func(payload string) {
 			var data protocol.LookResponse
@@ -749,19 +789,22 @@ func initResponseHandlers() {
 				roomExitsValue.SetText(strings.Join(exits, ", "))
 				statusRoomValue.SetText("Room: " + data.Room.ID)
 
+				sort.Slice(data.Items, func(i, j int) bool { return data.Items[i].ID < data.Items[j].ID })
 				roomItemsData = data.Items
 				roomItemsList.UnselectAll()
 				roomItemsList.Refresh()
 
+				sort.Slice(data.NPCs, func(i, j int) bool { return data.NPCs[i].ID < data.NPCs[j].ID })
 				roomNPCsData = data.NPCs
 				roomNPCsList.UnselectAll()
 				roomNPCsList.Refresh()
 
-				roomPlayersValue.SetText(strings.Join(data.Players, ", "))
+				roomPlayersData = data.Players
+				roomPlayersValue.SetText(strings.Join(roomPlayersData, ", "))
 				updateMoveButtons(data.Room.Exits)
 
 				// Chain refresh: LOOK success triggers INVENTORY sync
-				logCommand(sendCommand(globalConn, "INVENTORY"))
+				logCommand(sendBackgroundCommand(globalConn, "INVENTORY"))
 			}
 		},
 		"WHO": func(payload string) {
@@ -797,7 +840,7 @@ func initResponseHandlers() {
 				updateGroupDisplay(currentGroupID)
 				// Immediately send a LOOK command to discover other players in the room
 				// who might also be in the group.
-				logCommand(sendCommand(globalConn, "LOOK"))
+				logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 			} else if payload == "left" {
 				currentGroupID = "" // Clear group ID
 				groupMembers = nil
@@ -821,10 +864,11 @@ func initResponseHandlers() {
 		"INVENTORY": func(payload string) {
 			var items []protocol.InventoryItem
 			if err := json.Unmarshal([]byte(payload), &items); err == nil {
+				sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 				inventoryData = items
 				inventoryItems.Refresh()
 				// Chain refresh: INVENTORY success triggers STATUS sync
-				logCommand(sendCommand(globalConn, "STATUS"))
+				logCommand(sendBackgroundCommand(globalConn, "STATUS"))
 			}
 		},
 		"ATTACK": func(payload string) {
@@ -915,6 +959,46 @@ func applyEvent(line string) {
 	case "ROOM":
 		if strings.HasPrefix(data, "CHAT ") {
 			handleChatEvent("ROOM", strings.TrimPrefix(data, "CHAT "))
+		} else if strings.HasPrefix(data, "PRESENCE ENTER ") {
+			newUser := strings.TrimPrefix(data, "PRESENCE ENTER ")
+			exists := false
+			for _, u := range roomPlayersData {
+				if u == newUser {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				roomPlayersData = append(roomPlayersData, newUser)
+				sort.Strings(roomPlayersData)
+				roomPlayersValue.SetText(strings.Join(roomPlayersData, ", "))
+			}
+			updateChatLog(chatRoomLog, chatRoomScroll, "[System] " + newUser + " entered the room.\n")
+		} else if strings.HasPrefix(data, "PRESENCE LEAVE ") {
+			oldUser := strings.TrimPrefix(data, "PRESENCE LEAVE ")
+			var updated []string
+			for _, u := range roomPlayersData {
+				if u != oldUser {
+					updated = append(updated, u)
+				}
+			}
+			roomPlayersData = updated
+			sort.Strings(roomPlayersData)
+			roomPlayersValue.SetText(strings.Join(roomPlayersData, ", "))
+			updateChatLog(chatRoomLog, chatRoomScroll, "[System] " + oldUser + " left the room.\n")
+		} else if strings.HasPrefix(data, "COMBAT ") {
+			parts := strings.Split(data, " ")
+			if len(parts) >= 5 {
+				attacker := parts[1]
+				target := parts[2]
+				damage := parts[3]
+				targetHp := parts[4]
+				
+				formatted := fmt.Sprintf("[Combat] %s attacked %s for %s damage! (Target HP: %s)\n", attacker, target, damage, targetHp)
+				currentText := strings.TrimPrefix(interactionLog.Text, "Interaction details will appear here...")
+				interactionLog.SetText(currentText + formatted)
+				interactionScroll.ScrollToBottom()
+			}
 		} else {
 			updateChatLog(chatRoomLog, chatRoomScroll, "[System] "+data+"\n")
 		}

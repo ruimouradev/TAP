@@ -4,3 +4,11 @@ bin/
 *.out
 coverage.out
 .DS_Store
+
+# Compiled binaries in root
+/gui
+/cli
+/server
+
+# IDE configurations
+.vscode/
