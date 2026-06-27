@@ -98,7 +98,7 @@ Quests live in `internal/game/quest.go`. Two types are implemented (the RFC list
 
 **Rewards.** The reward is an item ID. On completion it is copied from the world item catalog (`World.Items`) into the player's inventory (with its proper display name).
 
-World quests: `quest.fetch_herbs` (from the Baker → reward `item.herbalist_token`, *Herbalist's Token*) and `quest.defeat_goblin_chief` (from the Goblin Chief → reward `item.chief_trophy`, *Goblin Chief's Trophy*). Reward items are **dedicated** — they are not placed anywhere in the world, so a granted reward never duplicates an item instance that already exists in a room.
+World quests: `quest.fetch_herbs` (from the Baker → reward `item.bakers_gratitude`, *Baker's Gratitude*) and `quest.defeat_goblin_chief` (from the Goblin Chief → reward `item.chief_trophy`, *Goblin Chief's Trophy*). Reward items are **dedicated** — they are not placed anywhere in the world, so a granted reward never duplicates an item instance that already exists in a room.
 
 ---
 
@@ -124,7 +124,7 @@ The TAP world consists of 8 distinct rooms designed with a **circular loop struc
 
 NPC roles (7 NPCs): **guard** (Guard — dialogue), **merchant** (Baker, Merchant, Innkeeper), **entertainer** (Bard — dialogue), **enemy** (Goblin, Goblin Chief). Quest-givers: Baker (`fetch`) and Goblin Chief (`defeat`).
 
-Items (8): Loaf of Bread, Healing Herbs, Rusty Sword, Ancient Relic, Silver Amulet, Torn Letter — all placed in rooms and obtainable with `TAKE` — plus two **dedicated quest rewards** (Herbalist's Token, Goblin Chief's Trophy) that exist only as rewards, never in a room.
+Items (8): Loaf of Bread, Healing Herbs, Rusty Sword, Ancient Relic, Silver Amulet, Torn Letter — all placed in rooms and obtainable with `TAKE` — plus two **dedicated quest rewards** (Baker's Gratitude, Goblin Chief's Trophy) that exist only as rewards, never in a room.
 
 Quests: `fetch_herbs` (Baker), `defeat_goblin_chief` (Goblin Chief).
 
@@ -279,8 +279,8 @@ QUESTS             # shows "status":"active"
 MOVE south
 MOVE east          # -> market
 TAKE Healing Herbs # the quest objective
-QUESTS             # now "status":"completed" — reward (Herbalist's Token) granted
-INVENTORY          # contains item.herbalist_token
+QUESTS             # now "status":"completed" — reward (Baker's Gratitude) granted
+INVENTORY          # contains item.bakers_gratitude
 ```
 
 ---
