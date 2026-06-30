@@ -110,7 +110,7 @@ func TestCombat(t *testing.T) {
 		t.Errorf("attack dragon err = %v, want ErrNPCNotFound", err)
 	}
 
-	// one hit kills the 1-HP goblin → victory, no counter-attack
+	// one hit kills the 1-HP goblin -> victory, no counter-attack
 	res, err := Attack(alice, square, "goblin")
 	if err != nil {
 		t.Fatalf("attack goblin: %v", err)
@@ -169,7 +169,7 @@ func TestQuests(t *testing.T) {
 
 	alice, _ := w.AddPlayer("alice")
 
-	// an NPC without a quest → ErrNoQuestAvailable
+	// an NPC without a quest -> ErrNoQuestAvailable
 	if _, err := GetQuestFromNPC(w, alice, square, "Dog"); err != ErrNoQuestAvailable {
 		t.Errorf("dog quest err = %v, want ErrNoQuestAvailable", err)
 	}

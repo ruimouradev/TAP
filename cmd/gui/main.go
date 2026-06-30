@@ -206,7 +206,7 @@ func main() {
 		globalConn = conn
 
 		//   6. goroutine in background to listen to the server thru conn and wire
-		// 		eventsCh → UI updates
+		// 		eventsCh -> UI updates
 		go readLoop(conn, eventsCh)
 
 		//   7. Consumer loop: process incoming lines and update the UI
@@ -1000,7 +1000,7 @@ func applyEvent(line string) {
 				interactionScroll.ScrollToBottom()
 			}
 		} else if strings.HasPrefix(data, "ITEM ") {
-			// another player took/dropped something here → refresh the room view
+			// another player took/dropped something here -> refresh the room view
 			logCommand(sendBackgroundCommand(globalConn, "LOOK"))
 		} else {
 			updateChatLog(chatRoomLog, chatRoomScroll, "[System] "+data+"\n")

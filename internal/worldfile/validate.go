@@ -11,7 +11,7 @@ Checks performed:
   - Every itemID referenced in a room exists in the items table
   - Every npcID referenced in a room exists in the npcs table
   - Every quest_id referenced in an NPC exists in the quests table
-  - Spec minimums: ≥8 rooms, ≥3 distinct NPC roles, ≥4 items (≥2 takeable), ≥2 quests
+  - Spec minimums: >=8 rooms, >=3 distinct NPC roles, >=4 items (>=2 takeable), >=2 quests
 */
 package worldfile
 
@@ -116,7 +116,7 @@ func checkQuestRefs(wf *WorldFile) error {
 }
 
 // checkMinimums ensures the world meets the spec's minimum requirements:
-// ≥8 rooms, ≥3 distinct NPC roles, ≥4 items (≥2 takeable), ≥2 quests.
+// >=8 rooms, >=3 distinct NPC roles, >=4 items (>=2 takeable), >=2 quests.
 func checkMinimums(wf *WorldFile) error {
 	if len(wf.Rooms) < 8 {
 		return fmt.Errorf("world must have at least 8 rooms (have %d)", len(wf.Rooms))
