@@ -1,5 +1,5 @@
 /*
-cmd/gui — Owner: Alexandre.
+cmd/gui - Fyne GUI client for TAP.
 
 Fyne-based GUI client for TAP.
 Connects directly to the TAP server over TCP (no bridge needed) and
@@ -12,11 +12,11 @@ The UI is composed of panels that the spec requires:
   - room panel (name, description, exits, items, NPCs, players in room)
   - chat panel with three scopes (GLOBAL / ROOM / GROUP)
   - inventory panel
-  - action bar (buttons for LOOK, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS)
+  - action bar (buttons for every action: LOOK, MOVE, TAKE, DROP, TALK, ATTACK, STATUS, QUEST, QUESTS, WHO, GROUP, QUIT)
   - status bar (HP, players in room, players on server)
 
 All commands are formatted via the shared internal/protocol package and
-sent over the TCP connection — the GUI holds no game logic, only render
+sent over the TCP connection - the GUI holds no game logic, only render
 and input wiring.
 */
 package main
@@ -82,7 +82,7 @@ func (q *CommandQueue) Pop() string {
 			return item.verb
 		}
 		// Otherwise, log that we pruned it and check the next one
-		log.Printf("⚠️ Protocol Sync: Pruned timed-out command '%s'", item.verb)
+		log.Printf("pruned timed-out command %q", item.verb)
 	}
 	return ""
 }
@@ -201,7 +201,7 @@ func main() {
 	if err != nil {
 		// log.Fatalf prints the error and calls os.Exit(1) immediately,
 		// preventing a nil-pointer crash later down the line.
-		log.Fatalf("❌ Critical Error: Failed to connect to server at %s: %v", addr, err)
+		log.Fatalf("cannot connect to server at %s: %v", addr, err)
 	} else {
 		globalConn = conn
 
@@ -209,10 +209,8 @@ func main() {
 		// 		eventsCh → UI updates
 		go readLoop(conn, eventsCh)
 
-		//   7. Consumer loop: process incoming lines and update UI
-		// anonymous function
+		//   7. Consumer loop: process incoming lines and update the UI
 		go func() {
-			// blocking loop, sits waiting for readLoop to drop a new string into eventsCh
 			for line := range eventsCh {
 				line = strings.TrimSpace(line)
 				if line == "" {
@@ -227,7 +225,6 @@ func main() {
 					}
 				})
 			}
-			// () tells Go to immediately invoke (execute)
 		}()
 
 		// Safety-net background LOOK. Rooms now also update instantly via the

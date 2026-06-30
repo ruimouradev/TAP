@@ -614,3 +614,32 @@ func TestRapidConnectionsLogged(t *testing.T) {
 		t.Fatalf("expected rapid-connection warning, log = %q", buf.String())
 	}
 }
+
+// TestRoomItemBroadcast verifies that taking/dropping an item notifies the other
+// players in the room with an EVT ROOM ITEM event (the actor is not notified).
+func TestRoomItemBroadcast(t *testing.T) {
+	world := testWorld()
+	world.Rooms["loc.square"].Items["item.coin"] = &game.Item{ID: "item.coin", Name: "Gold Coin"}
+	addr := startServer(t, world)
+
+	alice := connect(t, addr, "alice")
+	defer alice.close()
+	bob := connect(t, addr, "bob") // both spawn in loc.square
+	defer bob.close()
+
+	alice.send("TAKE Gold Coin")
+	if g := alice.response(); g != "OK taken=item.coin" {
+		t.Fatalf("TAKE = %q", g)
+	}
+	if e := bob.readEvent("EVT ROOM ITEM"); e != "EVT ROOM ITEM TAKEN alice item.coin" {
+		t.Fatalf("take event = %q", e)
+	}
+
+	alice.send("DROP item.coin")
+	if g := alice.response(); g != "OK dropped=item.coin" {
+		t.Fatalf("DROP = %q", g)
+	}
+	if e := bob.readEvent("EVT ROOM ITEM"); e != "EVT ROOM ITEM DROPPED alice item.coin" {
+		t.Fatalf("drop event = %q", e)
+	}
+}

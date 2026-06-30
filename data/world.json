@@ -75,7 +75,7 @@
     },
     "item.ancient_relic": {
       "name": "Ancient Relic",
-      "takeable": false,
+      "takeable": true,
       "lore": "A heavy relic etched with weathered runes. It hums faintly when held near the old stones."
     }
     ,

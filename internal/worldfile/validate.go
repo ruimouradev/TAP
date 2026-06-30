@@ -1,5 +1,5 @@
 /*
-Package worldfile — Owner: Alexandre.
+Package worldfile.
 
 File validate.go: referential integrity checks for the world data file.
 Must be called after Load() and BEFORE the server accepts any connections.

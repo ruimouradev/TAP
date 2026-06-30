@@ -1,57 +1,48 @@
-# Owner: Alexandre
-# Build tool for the TAP project — all required targets from the spec.
+# Build tool for the TAP project (all targets required by the subject).
+#
+# The school's system Go is too old and we cannot sudo to upgrade it (and the
+# system relies on that old version), so setup-go downloads a pinned Go into a
+# user directory; every target uses it, without touching the system Go.
 
-# -----------------------------------------------------------------------------
-# Dynamic Go Installation Configuration
-# -----------------------------------------------------------------------------
 GO_VERSION := 1.22.5
 GO_TARBALL := go$(GO_VERSION).linux-amd64.tar.gz
 GO_URL := https://go.dev/dl/$(GO_TARBALL)
 
-# 1. Determine where to install Go based on sgoinfre presence
-ifeq ($(wildcard /sgoinfre),)
-    # At home / sgoinfre does not exist: use $HOME/.local
+# Install Go in the user's space: $HOME/.local at home, /sgoinfre at school.
+ifeq ($(shell test -d /sgoinfre && echo yes),)
     GO_INSTALL_DIR := $(HOME)/.local
 else
-    # At school / sgoinfre exists: isolate it to your user directory
-    ifneq ($(wildcard /sgoinfre/students/$(USER)),)
+    ifneq ($(shell test -d /sgoinfre/students/$(USER) && echo yes),)
         GO_INSTALL_DIR := /sgoinfre/students/$(USER)/.local
-    else ifneq ($(wildcard /sgoinfre/$(USER)),)
+    else ifneq ($(shell test -d /sgoinfre/$(USER) && echo yes),)
         GO_INSTALL_DIR := /sgoinfre/$(USER)/.local
     else
         GO_INSTALL_DIR := /sgoinfre/.local-$(USER)
     endif
 endif
 
-# 2. Expose the custom Go binary path
 GO_BIN_DIR := $(GO_INSTALL_DIR)/go/bin
 CUSTOM_GO  := $(GO_BIN_DIR)/go
 
-# 3. Dynamic intercept: Use custom Go if it exists, otherwise use system 'go'
+# Use the downloaded Go if present, otherwise the system 'go'.
 GO := $(shell if [ -f $(CUSTOM_GO) ]; then echo $(CUSTOM_GO); else echo "go"; fi)
 
-# -----------------------------------------------------------------------------
-# CRITICAL FIX: Force Go to use sgoinfre for downloads/cache instead of $HOME
-# -----------------------------------------------------------------------------
+# Keep Go's cache and workspace in the user dir too.
 export GOPATH := $(GO_INSTALL_DIR)/go_workspace
 export PATH   := $(GO_BIN_DIR):$(PATH)
 
-# -----------------------------------------------------------------------------
-# Rules and Targets
-# -----------------------------------------------------------------------------
 .PHONY: setup-go deps run-server run-client run-client-gui fmt lint test-race test-fuzz clean
 
 setup-go:
 	@if [ ! -f $(CUSTOM_GO) ]; then \
-		echo "⚙️ Go binary not found at $(CUSTOM_GO). Starting automated setup..."; \
-		echo "📂 Target directory: $(GO_INSTALL_DIR)"; \
+		echo "Go not found at $(CUSTOM_GO); installing $(GO_VERSION) into $(GO_INSTALL_DIR)..."; \
 		mkdir -p $(GO_INSTALL_DIR); \
 		cd /tmp && wget -q --show-progress $(GO_URL); \
 		tar -C $(GO_INSTALL_DIR) -xzf /tmp/$(GO_TARBALL); \
 		rm /tmp/$(GO_TARBALL); \
-		echo "✅ Go $(GO_VERSION) successfully installed at $(CUSTOM_GO)"; \
+		echo "Go $(GO_VERSION) installed at $(CUSTOM_GO)"; \
 	else \
-		echo "🚀 Using existing Go installation at: $$($(CUSTOM_GO) version)"; \
+		echo "Using existing Go at $(CUSTOM_GO)"; \
 	fi
 
 deps: setup-go
