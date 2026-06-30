@@ -29,7 +29,7 @@ type WorldFile struct {
 type RoomDef struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
-	Exits       map[string]string `json:"exits"` // direction → roomID
+	Exits       map[string]string `json:"exits"` // direction -> roomID
 	Items       []string          `json:"items"` // itemIDs present at world start
 	NPCs        []string          `json:"npcs"`  // npcIDs present at world start
 }

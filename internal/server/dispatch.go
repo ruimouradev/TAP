@@ -22,7 +22,7 @@ type HandlerFunc func(h *Hub, c *Client, p *game.Player, args []string) string
 // before calling it.
 type Command struct {
 	Handler HandlerFunc
-	MinArgs int    // minimum args; fewer → ERR 400 with Usage
+	MinArgs int    // minimum args; fewer -> ERR 400 with Usage
 	Anon    bool   // may run before CONNECT (only CONNECT itself)
 	Usage   string // error token when MinArgs isn't met, e.g. "MISSING_ITEM"
 }
@@ -34,7 +34,7 @@ const (
 	floodLimit  = 20
 )
 
-// commands is the verb → spec table. Adding a command = one entry here plus the
+// commands is the verb -> spec table. Adding a command = one entry here plus the
 // handler. Built once, not per command.
 var commands = map[string]Command{
 	"CONNECT":   {handleConnect, 1, true, "MISSING_USERNAME"},

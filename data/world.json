@@ -53,7 +53,7 @@
     },
     "loc.deep_forest": {
       "name": "Deep Forest",
-      "description": "Deep in the forest the trees close in and light grows dim. Mossy stones and broken branches hint at long-forgotten ruins — danger lurks here.",
+      "description": "Deep in the forest the trees close in and light grows dim. Mossy stones and broken branches hint at long-forgotten ruins - danger lurks here.",
       "exits": { "north": "loc.forest_entrance" },
       "items": ["item.ancient_relic"],
       "npcs": ["npc.goblin_chief"]
@@ -82,7 +82,7 @@
     "item.amulet": {
       "name": "Silver Amulet",
       "takeable": true,
-      "lore": "A simple silver amulet engraved with a tiny tree — a common keepsake in the village."
+      "lore": "A simple silver amulet engraved with a tiny tree - a common keepsake in the village."
     },
     "item.torn_letter": {
       "name": "Torn Letter",
@@ -129,7 +129,7 @@
       "role": "merchant",
       "hp": 50,
       "hostile": false,
-      "dialogue": "Welcome, weary traveller. Rooms, stew and stout — best in the county.",
+      "dialogue": "Welcome, weary traveller. Rooms, stew and stout - best in the county.",
       "quest_id": ""
     },
     "npc.bard": {

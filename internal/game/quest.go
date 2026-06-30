@@ -2,7 +2,7 @@
 Package game.
 
 File quest.go: TAP quest system.
-Quest progression per player: NotStarted → Active → Completed.
+Quest progression per player: NotStarted -> Active -> Completed.
 Supported quest types (define in world.json): "fetch", "defeat", "deliver".
 
 Design decisions to document in the README:

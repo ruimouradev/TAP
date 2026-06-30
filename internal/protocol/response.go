@@ -30,13 +30,13 @@ func OKJson(v any) string {
 	return OK(string(b))
 }
 
-// ── Response structs (shared contract between server handlers and GUI) ────────
+// Response structs (shared contract between server handlers and GUI).
 //
-// Rui: marshal these with OKJson() in dispatch.go.
-// Alexandre: parse these fields in cmd/gui/main.go applyResponse().
+// Server side: marshal these with OKJson() in dispatch.go.
+// GUI side: parse these fields in cmd/gui/main.go applyResponse().
 
 // LookResponse is the JSON payload of LOOK.
-// Deviation from RFC §5.1.2: RFC lists items/npcs as ID strings.
+// Deviation from RFC section 5.1.2: RFC lists items/npcs as ID strings.
 // We use objects so the GUI can show names and hostile status without extra calls.
 type LookResponse struct {
 	Room    LookRoom   `json:"room"`
@@ -64,7 +64,7 @@ type LookNPC struct {
 }
 
 // WhoResponse is the JSON payload of WHO.
-// Deviation from RFC §5.2.2: RFC says "OK players=<count>" (plain text).
+// Deviation from RFC section 5.2.2: RFC says "OK players=<count>" (plain text).
 // We return JSON so the GUI shows room players and server total together.
 type WhoResponse struct {
 	Room   []string `json:"room"`
@@ -72,7 +72,7 @@ type WhoResponse struct {
 }
 
 // InventoryItem is one element in the INVENTORY JSON array.
-// Deviation from RFC §5.4.3: RFC example shows an array of ID strings.
+// Deviation from RFC section 5.4.3: RFC example shows an array of ID strings.
 // We return objects so the GUI can show item names without a secondary lookup.
 type InventoryItem struct {
 	ID   string `json:"id"`
@@ -80,7 +80,7 @@ type InventoryItem struct {
 }
 
 // TalkResponse is the JSON payload of TALK.
-// Deviation from RFC §5.4.4: RFC shows plain-text dialogue ("OK Welcome!").
+// Deviation from RFC section 5.4.4: RFC shows plain-text dialogue ("OK Welcome!").
 // We return JSON so the GUI can display the NPC name alongside the dialogue.
 type TalkResponse struct {
 	NPC      string `json:"npc"`
@@ -88,7 +88,7 @@ type TalkResponse struct {
 }
 
 // AttackResponse is the JSON payload of ATTACK.
-// Extends RFC §5.4.5 with Counter so the GUI shows NPC counter-attack damage.
+// Extends RFC section 5.4.5 with Counter so the GUI shows NPC counter-attack damage.
 type AttackResponse struct {
 	Damage     int    `json:"damage"`
 	Counter    int    `json:"counter"` // counter-attack damage to player (0 if NPC defeated)
@@ -97,14 +97,14 @@ type AttackResponse struct {
 	Status     string `json:"status"` // "combat" | "victory" | "defeat"
 }
 
-// StatusResponse is the JSON payload of STATUS. Matches RFC §5.4.6 exactly.
+// StatusResponse is the JSON payload of STATUS. Matches RFC section 5.4.6 exactly.
 type StatusResponse struct {
 	HP     int    `json:"hp"`
 	MaxHP  int    `json:"max_hp"`
 	Status string `json:"status"` // "healthy" | "wounded" | "dead"
 }
 
-// QuestResponse is the JSON payload of QUEST. Matches RFC §5.4.7 example.
+// QuestResponse is the JSON payload of QUEST. Matches RFC section 5.4.7 example.
 type QuestResponse struct {
 	QuestID     string `json:"quest_id"`
 	Description string `json:"description"`
@@ -113,7 +113,7 @@ type QuestResponse struct {
 	Reward      string `json:"reward"` // itemID
 }
 
-// QuestsEntry is one element in the QUESTS JSON array. Matches RFC §5.4.8 example.
+// QuestsEntry is one element in the QUESTS JSON array. Matches RFC section 5.4.8 example.
 type QuestsEntry struct {
 	QuestID     string `json:"quest_id"`
 	Description string `json:"description"`

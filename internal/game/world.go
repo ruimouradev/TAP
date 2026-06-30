@@ -10,11 +10,11 @@ import (
 
 // World is the top-level mutable game state.
 type World struct {
-	Rooms     map[string]*Room     // roomID → Room
-	Players   map[string]*Player   // username → Player
+	Rooms     map[string]*Room     // roomID -> Room
+	Players   map[string]*Player   // username -> Player
 	StartRoom string               // where new players spawn
-	Quests    map[string]*QuestDef // questID → static definition
-	Items     map[string]*Item     // itemID → catalog entry (for quest rewards)
+	Quests    map[string]*QuestDef // questID -> static definition
+	Items     map[string]*Item     // itemID -> catalog entry (for quest rewards)
 }
 
 // Room is a location in the world.
@@ -22,10 +22,10 @@ type Room struct {
 	ID          string
 	Name        string
 	Description string
-	Exits       map[string]string  // direction → destination roomID
-	Items       map[string]*Item   // itemID → Item on the floor
-	NPCs        map[string]*NPC    // npcID → NPC
-	Players     map[string]*Player // username → Player currently here
+	Exits       map[string]string  // direction -> destination roomID
+	Items       map[string]*Item   // itemID -> Item on the floor
+	NPCs        map[string]*NPC    // npcID -> NPC
+	Players     map[string]*Player // username -> Player currently here
 }
 
 // Player is a connected, authenticated player.
@@ -36,7 +36,7 @@ type Player struct {
 	MaxHP       int
 	Inventory   map[string]*Item
 	Quests      map[string]*PlayerQuest
-	Defeated    map[string]bool // npcID → true once this player has defeated it
+	Defeated    map[string]bool // npcID -> true once this player has defeated it
 	GroupID     string          // empty if not in a group
 }
 

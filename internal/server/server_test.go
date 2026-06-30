@@ -167,7 +167,7 @@ func TestPresenceAndChat(t *testing.T) {
 	alice := connect(t, addr, "alice")
 	defer alice.close()
 
-	bob := connect(t, addr, "bob") // bob enters the square → alice sees ENTER
+	bob := connect(t, addr, "bob") // bob enters the square -> alice sees ENTER
 	defer bob.close()
 	alice.waitEvent("EVT ROOM PRESENCE ENTER bob")
 
@@ -177,7 +177,7 @@ func TestPresenceAndChat(t *testing.T) {
 	}
 	alice.waitEvent("EVT ROOM CHAT bob hello there")
 
-	alice.send("MOVE north") // alice leaves the square → bob sees LEAVE
+	alice.send("MOVE north") // alice leaves the square -> bob sees LEAVE
 	if g := alice.response(); g != "OK room=loc.bakery" {
 		t.Fatalf("MOVE = %q", g)
 	}
@@ -295,7 +295,7 @@ func TestCombatAndStatus(t *testing.T) {
 		t.Fatalf("ATTACK dragon = %q", g)
 	}
 
-	// one hit kills the 1-HP goblin → victory
+	// one hit kills the 1-HP goblin -> victory
 	alice.send("ATTACK Goblin")
 	if g := alice.response(); !strings.Contains(g, `"status":"victory"`) {
 		t.Fatalf("ATTACK Goblin = %q", g)
@@ -316,7 +316,7 @@ func TestCombatBroadcast(t *testing.T) {
 	defer bob.close()
 	alice.waitEvent("EVT ROOM PRESENCE ENTER bob")
 
-	// alice attacks the goblin → bob (same room) sees the combat event
+	// alice attacks the goblin -> bob (same room) sees the combat event
 	alice.send("ATTACK Goblin")
 	alice.response()
 	bob.waitEvent("EVT ROOM COMBAT alice Goblin")
@@ -336,14 +336,14 @@ func TestGroups(t *testing.T) {
 		t.Fatalf("GROUP CREATE = %q", g)
 	}
 
-	// alice invites bob → bob gets an invite event
+	// alice invites bob -> bob gets an invite event
 	alice.send("GROUP INVITE bob")
 	if g := alice.response(); g != "OK invited" {
 		t.Fatalf("GROUP INVITE = %q", g)
 	}
 	bob.waitEvent("EVT GROUP INVITE alice")
 
-	// bob joins → alice sees the join
+	// bob joins -> alice sees the join
 	bob.send("GROUP JOIN")
 	if g := bob.response(); g != "OK group=alice" {
 		t.Fatalf("GROUP JOIN = %q", g)
@@ -357,7 +357,7 @@ func TestGroups(t *testing.T) {
 	}
 	bob.waitEvent("EVT GROUP CHAT alice hello team")
 
-	// bob leaves → alice sees the leave
+	// bob leaves -> alice sees the leave
 	bob.send("GROUP LEAVE")
 	if g := bob.response(); g != "OK left" {
 		t.Fatalf("GROUP LEAVE = %q", g)
@@ -415,7 +415,7 @@ func TestQuestFlow(t *testing.T) {
 		t.Fatalf("QUESTS active = %q", g)
 	}
 
-	// asking again → no quest available
+	// asking again -> no quest available
 	alice.send("QUEST Elder")
 	if g := alice.response(); g != "ERR 406 NO_QUEST_AVAILABLE" {
 		t.Fatalf("QUEST again = %q", g)
@@ -547,7 +547,7 @@ func TestGroupDisbandOnLeaderLeave(t *testing.T) {
 	member.response()
 	leader.readEvent("EVT GROUP JOIN")
 
-	// leader leaves → group disbands → member gets a LEAVE for the leader
+	// leader leaves -> group disbands -> member gets a LEAVE for the leader
 	leader.send("GROUP LEAVE")
 	if g := leader.response(); g != "OK left" {
 		t.Fatalf("leader LEAVE = %q", g)

@@ -17,7 +17,7 @@ func (e Error) Wire() string {
 	return fmt.Sprintf("ERR %03d %s\n", e.Code, e.Msg)
 }
 
-// Standard errors from RFC 42TAP §8.2.
+// Standard errors from RFC 42TAP section 8.2.
 var (
 	ErrNameInUse        = Error{201, "NAME_IN_USE"}
 	ErrNoExit           = Error{301, "NO_EXIT"}
