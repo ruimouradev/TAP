@@ -1,5 +1,5 @@
 /*
-Package protocol - Owner: BOTH (Rui + Alexandre).
+Package protocol.
 
 File command_test.go: tests for Parse() and for the response/event formatters.
 

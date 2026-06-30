@@ -1,11 +1,11 @@
 /*
-Package worldfile — Owner: Alexandre.
+Package worldfile.
 
 File loader.go: reads and parses the world data file (world.json).
 Converts the JSON schema into Go structs that the game package uses to
 build the live world. Called at server startup before accepting clients.
 
-The WorldFile structs here are the FILE SCHEMA — they map 1:1 to the
+The WorldFile structs here are the FILE SCHEMA - they map 1:1 to the
 JSON keys. The game package converts them into its own runtime types.
 */
 package worldfile
