@@ -218,12 +218,12 @@ go run -race ./cmd/server data/world.json
 
 ### Automated tests
 
-Run from the project root (the race detector catches concurrency bugs):
+Run from the project root or to avoid disk space issues run the equivalente Makefile targets (the race detector catches concurrency bugs):
 
 ```bash
-go test -race ./...        # all packages
+go test -race ./...        # or make test-race (all packages)
 go test -race ./internal/server -v   # server integration tests, case by case
-go test -fuzz=FuzzParse ./internal/protocol   # fuzz the command parser
+go test -fuzz=FuzzParse ./internal/protocol   # or make test-fuzz ((fuzz the command parser)
 ```
 
 The suite covers the protocol (parsing, responses, events), the game core

@@ -39,7 +39,7 @@ export PATH   := $(GO_BIN_DIR):$(PATH)
 # -----------------------------------------------------------------------------
 # Rules and Targets
 # -----------------------------------------------------------------------------
-.PHONY: setup-go deps run-server run-client run-client-gui fmt lint clean
+.PHONY: setup-go deps run-server run-client run-client-gui fmt lint test-race test-fuzz clean
 
 setup-go:
 	@if [ ! -f $(CUSTOM_GO) ]; then \
@@ -71,6 +71,12 @@ fmt: setup-go
 
 lint: setup-go
 	$(GO)fmt -l . && $(GO) vet ./...
+
+test-race: setup-go
+	$(GO) test -race ./...
+
+test-fuzz: setup-go
+	$(GO) test -fuzz=FuzzParse -fuzztime=15s ./internal/protocol
 
 clean:
 	$(GO) clean && rm -rf bin/
