@@ -218,12 +218,12 @@ go run -race ./cmd/server data/world.json
 
 ### Automated tests
 
-Run from the project root or to avoid disk space issues run the equivalente Makefile targets (the race detector catches concurrency bugs):
+Run from the project root, or to avoid disk space issues run the equivalent Makefile targets (the race detector catches concurrency bugs):
 
 ```bash
 go test -race ./...        # or make test-race (all packages)
 go test -race ./internal/server -v   # server integration tests, case by case
-go test -fuzz=FuzzParse ./internal/protocol   # or make test-fuzz ((fuzz the command parser)
+go test -fuzz=FuzzParse ./internal/protocol   # or make test-fuzz (fuzz the command parser)
 ```
 
 The suite covers the protocol (parsing, responses, events), the game core
@@ -295,9 +295,11 @@ INVENTORY          # contains item.bakers_gratitude
 
 ### AI Usage
 
-AI was used to support the learning process, specifically for:
-- Clarifying the project requirements and understanding the scope of the RFC 42TAP specification
+AI was used to support specific aspects of the project, namely:
+- Clarifying a few doubts about the project requirements and the scope of the RFC 42TAP specification
 - Answering questions about Go concepts such as goroutines, channels, and the concurrency model
+- Getting a second opinion on the initial project skeleton (package layout and what each file should do)
 - Discussing and evaluating different approaches to dividing the work between team members
-- Assisting with debugging by explaining error messages and suggesting possible causes
+- Assisting with debugging by explaining error messages and pointing to likely causes
+- Suggesting possible optimizations to some parts of the code
 - Structuring and drafting the README
