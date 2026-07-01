@@ -102,6 +102,7 @@ func TestValidate_Minimums(t *testing.T) {
 	// roles < 3
 	wf = baseWorld()
 	wf.NPCs = map[string]NPCDef{"npc1": {Name: "A", Role: "guard"}}
+	wf.Quests = map[string]QuestDef{}
 	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "3 distinct NPC roles") {
 		t.Fatalf("expected roles-minimum error, got %v", err)
 	}

@@ -39,6 +39,9 @@ func Validate(wf *WorldFile) error {
 	if err := checkQuestRefs(wf); err != nil {
 		return err
 	}
+	if err := checkQuestTargets(wf); err != nil {
+		return err 
+	}
 	if err := checkMinimums(wf); err != nil {
 		return err
 	}
@@ -110,6 +113,24 @@ func checkQuestRefs(wf *WorldFile) error {
 		}
 		if _, ok := wf.Quests[npc.QuestID]; !ok {
 			return fmt.Errorf("npc %q references unknown quest %q", npcID, npc.QuestID)
+		}
+	}
+	return nil
+}
+
+// checkQuestTargets verifies every quest's target and reward reference an
+// existing item or NPC.
+func checkQuestTargets(wf *WorldFile) error {
+	for id, q := range wf.Quests {
+		if q.Reward != "" {
+			if _, ok := wf.Items[q.Reward]; !ok {
+				return fmt.Errorf("quest %q has unknown reward item %q", id, q.Reward)
+			}
+		}
+		_, isItem := wf.Items[q.TargetID]
+		_, isNPC := wf.NPCs[q.TargetID]
+		if !isItem && !isNPC {
+			return fmt.Errorf("quest %q has unknown target %q", id, q.TargetID)
 		}
 	}
 	return nil
