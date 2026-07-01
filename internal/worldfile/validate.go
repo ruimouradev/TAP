@@ -40,7 +40,7 @@ func Validate(wf *WorldFile) error {
 		return err
 	}
 	if err := checkQuestTargets(wf); err != nil {
-		return err 
+		return err
 	}
 	if err := checkMinimums(wf); err != nil {
 		return err
