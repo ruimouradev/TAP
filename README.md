@@ -295,7 +295,7 @@ INVENTORY          # contains item.bakers_gratitude
 
 ### AI Usage
 
-AI was used at several points in the project, namely for:
+AI was used to support specific aspects of the project, namely:
 - Clarifying a few doubts about the project requirements and the scope of the RFC 42TAP specification
 - Answering questions about Go concepts such as goroutines, channels, and the concurrency model
 - Getting a second opinion on the initial project skeleton (package layout and what each file should do)
