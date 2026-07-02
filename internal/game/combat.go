@@ -63,8 +63,8 @@ func Attack(player *Player, room *Room, npcName string) (*CombatResult, error) {
 		res.Status = "victory"
 		res.TargetHP = 0
 		res.AttackerHP = player.HP
-		player.Defeated[npc.ID] = true // for defeat quests, record before removing
-		delete(room.NPCs, npc.ID)      // a defeated NPC leaves the room, no more TALK or ATTACK
+		player.Defeated[npc.ID] = true // for defeat quests (record before removing)
+		delete(room.NPCs, npc.ID)      // a defeated NPC leaves the room (no more TALK or ATTACK)
 		return res, nil
 	}
 

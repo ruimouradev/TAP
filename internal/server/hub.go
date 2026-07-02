@@ -12,9 +12,8 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// Rapid connection detection. More than connLimit connections from one IP
-// inside connWindow is logged as a possible abuse pattern. We just log it,
-// we do not block.
+// Rapid connection detection: more than connLimit connections from one IP
+// inside connWindow is logged as a possible abuse pattern (we monitor, not block).
 const (
 	connWindow = 10 * time.Second
 	connLimit  = 5
@@ -30,7 +29,7 @@ type Hub struct {
 	world      *game.World          // only the Hub touches this
 	log        *slog.Logger
 
-	// rapid connection tracking per IP, only touched in the Hub goroutine so no lock
+	// rapid connection tracking per IP (only touched in the Hub goroutine, so no lock)
 	connRate map[string]*rateWindow
 }
 
@@ -89,8 +88,8 @@ func (h *Hub) Run() {
 			}
 
 		case ic := <-h.commands:
-			// ignore commands from a client already gone. register, unregister
-			// and commands arrive on different channels and may reorder
+			// ignore commands from a client already gone (register, unregister
+			// and commands arrive on different channels and may reorder)
 			if _, ok := h.clients[ic.client]; ok {
 				h.dispatch(ic.client, ic.cmd)
 			}
@@ -120,8 +119,8 @@ func (h *Hub) broadcastAll(msg string) {
 }
 
 // removeClient takes the player out of the world and announces the departure.
-// Must run inside Run. The state is removed before the broadcast, as the
-// subject asks.
+// Must run inside Run. State is removed before the broadcast (the spec asks
+// for this order).
 func (h *Hub) removeClient(c *Client) {
 	if c.username == "" {
 		return // never finished CONNECT

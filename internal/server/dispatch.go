@@ -22,12 +22,12 @@ type HandlerFunc func(h *Hub, c *Client, p *game.Player, args []string) string
 type Command struct {
 	Handler HandlerFunc
 	MinArgs int    // minimum args, fewer than this gives ERR 400 with Usage
-	Anon    bool   // true if it may run before CONNECT, only CONNECT itself
+	Anon    bool   // may run before CONNECT (only CONNECT itself)
 	Usage   string // error token when MinArgs is not met, like "MISSING_ITEM"
 }
 
-// Command flood detection. More than floodLimit commands from one client
-// inside floodWindow is logged as possible abuse. We just log it, we do not block.
+// Command flood detection: more than floodLimit commands from one client
+// inside floodWindow is logged as possible abuse (we monitor, not block).
 const (
 	floodWindow = time.Second
 	floodLimit  = 20
@@ -78,7 +78,7 @@ func (h *Hub) dispatch(c *Client, cmd protocol.Command) {
 		return
 	}
 
-	// resolve the player once and hand it to the handler, nil for CONNECT
+	// resolve the player once and hand it to the handler (nil for CONNECT)
 	var p *game.Player
 	if c.username != "" {
 		p = h.world.GetPlayer(c.username)

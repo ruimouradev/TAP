@@ -24,7 +24,7 @@ type Client struct {
 	addr         string      // remote IP:port, kept for logging after close
 	log          *slog.Logger
 
-	// command flood detection, only touched inside the Hub goroutine so no lock
+	// command flood detection (only touched inside the Hub goroutine, so no lock)
 	cmdRate rateWindow
 }
 
