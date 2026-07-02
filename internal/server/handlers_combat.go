@@ -1,4 +1,4 @@
-// handlers_combat.go: combat commands (ATTACK / STATUS).
+// handlers_combat.go: combat commands ATTACK and STATUS.
 package server
 
 import (
@@ -8,7 +8,7 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleAttack: ATTACK <npc> - one round of combat against a hostile NPC.
+// handleAttack: ATTACK <npc>. One round of combat against a hostile NPC.
 func handleAttack(h *Hub, c *Client, p *game.Player, args []string) string {
 	room := h.world.GetRoom(p.CurrentRoom)
 	res, err := game.Attack(p, room, strings.Join(args, " "))
@@ -18,9 +18,9 @@ func handleAttack(h *Hub, c *Client, p *game.Player, args []string) string {
 		}
 		return protocol.ErrNPCNotFound.Wire()
 	}
-	// let the others in the room see the combat round (player's still here)
+	// let the others in the room see the combat round, the player is still here
 	h.broadcast(p.CurrentRoom, protocol.RoomCombat(c.username, strings.Join(args, " "), res.Damage, res.TargetHP), c)
-	// on defeat the player respawns at the start room; tell both rooms
+	// on defeat the player respawns at the start room, so tell both rooms
 	if res.PlayerDied {
 		from := p.CurrentRoom
 		game.RespawnPlayer(h.world, p)
@@ -40,7 +40,7 @@ func handleAttack(h *Hub, c *Client, p *game.Player, args []string) string {
 	})
 }
 
-// handleStatus: STATUS - the player's HP and condition.
+// handleStatus: STATUS. Returns the player's HP and condition.
 func handleStatus(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKJson(protocol.StatusResponse{
 		HP:     p.HP,

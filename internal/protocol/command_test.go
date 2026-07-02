@@ -1,16 +1,4 @@
-/*
-Package protocol.
-
-File command_test.go: tests for Parse() and for the response/event formatters.
-
-This file is a reference for the table-driven test style - the idiomatic way
-to test in Go. Run it with:
-
-	go test ./internal/protocol
-
-The same pattern (a slice of cases + a loop with t.Run) works for the world
-loader, the combat formula, etc. Reuse it across the project.
-*/
+// command_test.go: table-driven tests for Parse() and the response/event formatters.
 package protocol
 
 import (

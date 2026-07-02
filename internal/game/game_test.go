@@ -3,7 +3,7 @@ package game
 
 import "testing"
 
-// buildTestWorld makes a tiny 2-room world by hand (no world file needed).
+// buildTestWorld makes a tiny 2-room world by hand, no world file needed.
 func buildTestWorld() *World {
 	square := &Room{
 		ID: "loc.square", Name: "Square",

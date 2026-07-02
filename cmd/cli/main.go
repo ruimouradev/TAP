@@ -1,6 +1,6 @@
-// cmd/cli: the TAP command-line client. Sends raw RFC commands typed by the
-// user and prints everything the server sends, in real time. Two goroutines:
-// readLoop (socket -> stdout) and writeLoop (stdin -> socket).
+// cmd/cli: the TAP command line client. Sends the raw RFC commands typed by
+// the user and prints everything the server sends, in real time. Two
+// goroutines: readLoop from socket to stdout and writeLoop from stdin to socket.
 package main
 
 import (
@@ -51,7 +51,7 @@ func writeLoop(conn net.Conn, done <-chan struct{}) {
 		line := sc.Text()
 		fmt.Fprintf(conn, "%s\n", line)
 		if strings.EqualFold(strings.TrimSpace(line), "QUIT") {
-			return // closes the connection (defer in main)
+			return // main's defer then closes the connection
 		}
 	}
 }

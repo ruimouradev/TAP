@@ -1,15 +1,5 @@
-/*
-Package game.
-
-File quest.go: TAP quest system.
-Quest progression per player: NotStarted -> Active -> Completed.
-Supported quest types (define in world.json): "fetch", "defeat", "deliver".
-
-Design decisions to document in the README:
-  - How objectives are tracked and validated (auto vs. manual completion)
-  - How rewards are granted (item added to inventory)
-  - Quest dependencies / chains (if any)
-*/
+// quest.go: the quest system. Progression is per player:
+// NotStarted -> Active -> Completed. Types: "fetch" and "defeat".
 package game
 
 import "errors"
@@ -27,27 +17,30 @@ const (
 type QuestDef struct {
 	ID          string
 	Description string
-	Type        string // "fetch", "defeat", "deliver"
+	Type        string // "fetch" or "defeat"
 	TargetID    string // itemID or npcID depending on Type
 	Reward      string // itemID granted on completion
 }
 
 // PlayerQuest tracks a specific player's progress on one quest.
 type PlayerQuest struct {
-	Def      *QuestDef
-	State    QuestState
-	Progress int // e.g. items collected or enemies defeated so far
+	Def   *QuestDef
+	State QuestState
 }
 
 // ErrNoQuestAvailable is returned when an NPC has no quest for this player.
 var ErrNoQuestAvailable = errors.New("no quest available")
 
 // GetQuestFromNPC returns the quest offered by the named NPC in room, if the
-// player can take it (the NPC is a quest-giver and the player hasn't started or
-// finished that quest yet). Otherwise returns ErrNoQuestAvailable.
+// player can take it. If the NPC is not in the room the error is ErrNPCNotFound,
+// which the handler turns into ERR 404 as the RFC asks. If the NPC is there but
+// has nothing to offer the error is ErrNoQuestAvailable.
 func GetQuestFromNPC(world *World, player *Player, room *Room, npcName string) (*QuestDef, error) {
 	npc, ok := findNPC(room, npcName)
-	if !ok || npc.QuestID == "" {
+	if !ok {
+		return nil, ErrNPCNotFound
+	}
+	if npc.QuestID == "" {
 		return nil, ErrNoQuestAvailable
 	}
 	if _, already := player.Quests[npc.QuestID]; already {
@@ -88,7 +81,7 @@ func CompleteQuest(world *World, player *Player, pq *PlayerQuest) error {
 	}
 	reward, ok := world.Items[pq.Def.Reward]
 	if !ok {
-		return nil // reward item not in the catalog; nothing to grant
+		return nil // reward item not in the catalog, nothing to grant
 	}
 	player.Inventory[reward.ID] = &Item{ID: reward.ID, Name: reward.Name}
 	return nil

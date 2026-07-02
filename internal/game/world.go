@@ -1,5 +1,5 @@
-// world.go: the core domain model (World, Room, Player, NPC) and the
-// world-level operations. Only the Hub goroutine mutates these - no locks.
+// world.go: the core domain model World, Room, Player and NPC, plus the
+// world level operations. Only the Hub goroutine mutates these, so no locks.
 package game
 
 import (
@@ -14,7 +14,7 @@ type World struct {
 	Players   map[string]*Player   // username -> Player
 	StartRoom string               // where new players spawn
 	Quests    map[string]*QuestDef // questID -> static definition
-	Items     map[string]*Item     // itemID -> catalog entry (for quest rewards)
+	Items     map[string]*Item     // itemID -> catalog entry, used for quest rewards
 }
 
 // Room is a location in the world.
@@ -44,7 +44,7 @@ type Player struct {
 type NPC struct {
 	ID       string
 	Name     string
-	Role     string // "merchant", "guard", "enemy", ...
+	Role     string // like "merchant", "guard" or "enemy"
 	HP       int
 	MaxHP    int
 	Hostile  bool
@@ -192,7 +192,7 @@ func (w *World) PlayersInRoom(roomID string) []string {
 // TotalPlayers is the number of connected players.
 func (w *World) TotalPlayers() int { return len(w.Players) }
 
-// NPCInRoom finds an NPC in room by ID or display name (case-insensitive).
+// NPCInRoom finds an NPC in room by ID or display name, ignoring case.
 func (w *World) NPCInRoom(room *Room, name string) (*NPC, bool) {
 	return findNPC(room, name)
 }

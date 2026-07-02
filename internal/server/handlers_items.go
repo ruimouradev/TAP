@@ -1,4 +1,4 @@
-// handlers_items.go: item handling and NPC dialogue (TAKE / DROP / INVENTORY / TALK).
+// handlers_items.go: item handling and NPC dialogue. TAKE, DROP, INVENTORY and TALK.
 package server
 
 import (
@@ -8,7 +8,7 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleTake: TAKE <item> - move an item from the room floor to the inventory.
+// handleTake: TAKE <item>. Moves an item from the room floor to the inventory.
 // The identifier may be an ID or a multi-word display name, so we join the args.
 func handleTake(h *Hub, c *Client, p *game.Player, args []string) string {
 	room := h.world.GetRoom(p.CurrentRoom)
@@ -22,7 +22,7 @@ func handleTake(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKf("taken=%s", it.ID)
 }
 
-// handleDrop: DROP <item> - move an item from the inventory back to the floor.
+// handleDrop: DROP <item>. Moves an item from the inventory back to the floor.
 func handleDrop(h *Hub, c *Client, p *game.Player, args []string) string {
 	room := h.world.GetRoom(p.CurrentRoom)
 	it, err := game.DropItem(p, room, strings.Join(args, " "))
@@ -35,7 +35,7 @@ func handleDrop(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKf("dropped=%s", it.ID)
 }
 
-// handleInventory: INVENTORY - the player's items as a JSON array.
+// handleInventory: INVENTORY. Returns the player's items as a JSON array.
 func handleInventory(h *Hub, c *Client, p *game.Player, args []string) string {
 	items := make([]protocol.InventoryItem, 0, len(p.Inventory))
 	for _, it := range p.Inventory {
@@ -44,7 +44,7 @@ func handleInventory(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKJson(items)
 }
 
-// handleTalk: TALK <npc> - return the NPC's dialogue (matched by ID or name).
+// handleTalk: TALK <npc>. Returns the NPC's dialogue, matched by ID or name.
 func handleTalk(h *Hub, c *Client, p *game.Player, args []string) string {
 	room := h.world.GetRoom(p.CurrentRoom)
 	npc, ok := h.world.NPCInRoom(room, strings.Join(args, " "))

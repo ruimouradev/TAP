@@ -17,13 +17,13 @@ import (
 	"the-answer-protocol/internal/game"
 )
 
-// startServer runs a Hub on the given world (logs discarded) and returns its address.
+// startServer runs a Hub on the given world with logs discarded and returns its address.
 func startServer(t *testing.T, world *game.World) string {
 	return startServerLog(t, world, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // startServerLog is like startServer but sends logs to the given logger, so a
-// test can capture them (e.g. to assert abuse warnings are emitted).
+// test can capture them, for example to assert abuse warnings are emitted.
 func startServerLog(t *testing.T, world *game.World, log *slog.Logger) string {
 	t.Helper()
 	hub := NewHub(world, log)

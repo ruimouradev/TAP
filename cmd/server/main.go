@@ -52,7 +52,7 @@ func main() {
 	listenAndServe(ctx, ln, hub, log)
 }
 
-// listenAndServe accepts connections until ctx is cancelled (Ctrl+C).
+// listenAndServe accepts connections until ctx is cancelled with Ctrl+C.
 func listenAndServe(ctx context.Context, ln net.Listener, hub *server.Hub, log *slog.Logger) {
 	go func() {
 		<-ctx.Done()

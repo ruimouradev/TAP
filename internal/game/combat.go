@@ -1,7 +1,7 @@
-// combat.go: the combat system. Combat is turn-based - each ATTACK command is
-// one round. There is no persistent "in combat" state, so any command is valid
+// combat.go: the combat system. Combat is turn based, each ATTACK command is
+// one round. There is no persistent in-combat state, so any command is valid
 // between rounds. The attacked NPC counter-attacks each round unless it is
-// defeated; when a player's HP reaches 0 they respawn at the start room with
+// defeated. When a player's HP reaches 0 they respawn at the start room with
 // half their max HP.
 package game
 
@@ -16,7 +16,7 @@ type CombatResult struct {
 	AttackerHP int    // player HP after this round
 	TargetHP   int    // NPC HP after this round
 	Damage     int    // damage dealt to the NPC
-	CounterDmg int    // counter-attack damage dealt to the player (0 if NPC defeated)
+	CounterDmg int    // counter-attack damage dealt to the player, 0 if the NPC was defeated
 	Status     string // "combat", "victory", "defeat"
 	Defeated   bool   // true if the NPC was defeated this round
 	PlayerDied bool   // true if the player's HP reached 0
@@ -27,9 +27,10 @@ var (
 	ErrNPCNotHostile = errors.New("npc not hostile")
 )
 
-// Damage of a single hit is a random value in [minDamage, maxDamage], for the
-// player and the NPC alike. Neither has separate attack/defense stats, so the
-// formula is intentionally simple - change the range to tune difficulty.
+// Damage of a single hit is a random value between minDamage and maxDamage,
+// for the player and the NPC alike. Neither has separate attack or defense
+// stats, so the formula is intentionally simple. Change the range to tune
+// difficulty.
 const (
 	minDamage = 10
 	maxDamage = 20
@@ -41,7 +42,7 @@ func calculateDamage() int {
 }
 
 // Attack runs one round of combat between player and the named NPC in room.
-// The player strikes first; if the NPC survives, it counter-attacks.
+// The player strikes first. If the NPC survives, it counter-attacks.
 func Attack(player *Player, room *Room, npcName string) (*CombatResult, error) {
 	npc, ok := findNPC(room, npcName)
 	if !ok {
@@ -62,8 +63,8 @@ func Attack(player *Player, room *Room, npcName string) (*CombatResult, error) {
 		res.Status = "victory"
 		res.TargetHP = 0
 		res.AttackerHP = player.HP
-		player.Defeated[npc.ID] = true // for "defeat" quests (record before removing)
-		delete(room.NPCs, npc.ID)      // defeated NPC leaves the room (can't be hit/talked again)
+		player.Defeated[npc.ID] = true // for defeat quests, record before removing
+		delete(room.NPCs, npc.ID)      // a defeated NPC leaves the room, no more TALK or ATTACK
 		return res, nil
 	}
 
@@ -94,7 +95,7 @@ func RespawnPlayer(world *World, player *Player) {
 	}
 }
 
-// findNPC looks up an NPC in room by ID or display name (case-insensitive).
+// findNPC looks up an NPC in room by ID or display name, ignoring case.
 func findNPC(room *Room, name string) (*NPC, bool) {
 	for _, npc := range room.NPCs {
 		if strings.EqualFold(npc.ID, name) || strings.EqualFold(npc.Name, name) {

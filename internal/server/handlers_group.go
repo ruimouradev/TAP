@@ -1,4 +1,4 @@
-// handlers_group.go: party management (GROUP CREATE / INVITE / JOIN / LEAVE).
+// handlers_group.go: party management. GROUP CREATE, INVITE, JOIN and LEAVE.
 package server
 
 import (
@@ -8,7 +8,7 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleGroup: GROUP <CREATE|INVITE|JOIN|LEAVE> [args] - routes to a subcommand.
+// handleGroup: GROUP <CREATE|INVITE|JOIN|LEAVE> [args]. Routes to a subcommand.
 func handleGroup(h *Hub, c *Client, p *game.Player, args []string) string {
 	switch strings.ToUpper(args[0]) {
 	case "CREATE":
@@ -24,7 +24,7 @@ func handleGroup(h *Hub, c *Client, p *game.Player, args []string) string {
 	}
 }
 
-// handleGroupCreate: GROUP CREATE - start a new group led by the caller.
+// handleGroupCreate: GROUP CREATE. Starts a new group led by the caller.
 func handleGroupCreate(h *Hub, c *Client, p *game.Player, args []string) string {
 	if p.GroupID != "" {
 		return protocol.ErrAlreadyInGroup.Wire()
@@ -39,7 +39,7 @@ func handleGroupCreate(h *Hub, c *Client, p *game.Player, args []string) string 
 	return protocol.OKf("group=%s", c.username)
 }
 
-// handleGroupInvite: GROUP INVITE <username> - the leader invites a player.
+// handleGroupInvite: GROUP INVITE <username>. The leader invites a player.
 func handleGroupInvite(h *Hub, c *Client, p *game.Player, args []string) string {
 	grp := h.groups[p.GroupID]
 	if grp == nil {
@@ -63,7 +63,7 @@ func handleGroupInvite(h *Hub, c *Client, p *game.Player, args []string) string 
 	return protocol.OK("invited")
 }
 
-// handleGroupJoin: GROUP JOIN - accept a pending invite.
+// handleGroupJoin: GROUP JOIN. Accepts a pending invite.
 func handleGroupJoin(h *Hub, c *Client, p *game.Player, args []string) string {
 	if p.GroupID != "" {
 		return protocol.ErrAlreadyInGroup.Wire()
@@ -83,7 +83,7 @@ func handleGroupJoin(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKf("group=%s", grp.ID)
 }
 
-// handleGroupLeave: GROUP LEAVE - leave the current group.
+// handleGroupLeave: GROUP LEAVE. Leaves the current group.
 func handleGroupLeave(h *Hub, c *Client, p *game.Player, args []string) string {
 	if p.GroupID == "" {
 		return protocol.ErrNotInGroup.Wire()

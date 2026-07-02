@@ -1,4 +1,4 @@
-// handlers_quest.go: quest commands (QUEST / QUESTS).
+// handlers_quest.go: quest commands QUEST and QUESTS.
 package server
 
 import (
@@ -8,11 +8,14 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleQuest: QUEST <npc> - request a quest from a quest-giver NPC.
+// handleQuest: QUEST <npc>. Requests a quest from a quest-giver NPC.
 func handleQuest(h *Hub, c *Client, p *game.Player, args []string) string {
 	room := h.world.GetRoom(p.CurrentRoom)
 	def, err := game.GetQuestFromNPC(h.world, p, room, strings.Join(args, " "))
 	if err != nil {
+		if err == game.ErrNPCNotFound {
+			return protocol.ErrNPCNotFound.Wire()
+		}
 		return protocol.ErrNoQuestAvailable.Wire()
 	}
 	game.StartQuest(p, def)
@@ -26,8 +29,8 @@ func handleQuest(h *Hub, c *Client, p *game.Player, args []string) string {
 	})
 }
 
-// handleQuests: QUESTS - list the player's quests. Any active quest whose
-// objective is now met is completed here (and its reward granted) before listing.
+// handleQuests: QUESTS. Lists the player's quests. Any active quest whose
+// objective is now met is completed here and its reward granted before listing.
 func handleQuests(h *Hub, c *Client, p *game.Player, args []string) string {
 	entries := make([]protocol.QuestsEntry, 0, len(p.Quests))
 	for _, pq := range game.ListQuests(p) {

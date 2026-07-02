@@ -30,7 +30,7 @@ func OKJson(v any) string {
 	return OK(string(b))
 }
 
-// Response structs (shared contract between server handlers and GUI).
+// Response structs, the shared contract between server handlers and the GUI.
 //
 // Server side: marshal these with OKJson() in dispatch.go.
 // GUI side: parse these fields in cmd/gui/main.go applyResponse().
@@ -91,24 +91,24 @@ type TalkResponse struct {
 // Extends RFC section 5.4.5 with Counter so the GUI shows NPC counter-attack damage.
 type AttackResponse struct {
 	Damage     int    `json:"damage"`
-	Counter    int    `json:"counter"` // counter-attack damage to player (0 if NPC defeated)
+	Counter    int    `json:"counter"` // counter-attack damage to the player, 0 if the NPC was defeated
 	AttackerHP int    `json:"attacker_hp"`
 	TargetHP   int    `json:"target_hp"`
-	Status     string `json:"status"` // "combat" | "victory" | "defeat"
+	Status     string `json:"status"` // combat, victory or defeat
 }
 
 // StatusResponse is the JSON payload of STATUS. Matches RFC section 5.4.6 exactly.
 type StatusResponse struct {
 	HP     int    `json:"hp"`
 	MaxHP  int    `json:"max_hp"`
-	Status string `json:"status"` // "healthy" | "wounded" | "dead"
+	Status string `json:"status"` // healthy, wounded or dead
 }
 
 // QuestResponse is the JSON payload of QUEST. Matches RFC section 5.4.7 example.
 type QuestResponse struct {
 	QuestID     string `json:"quest_id"`
 	Description string `json:"description"`
-	Type        string `json:"type"`   // "fetch" | "defeat" | "deliver"
+	Type        string `json:"type"`   // fetch or defeat
 	Target      string `json:"target"` // itemID or npcID
 	Reward      string `json:"reward"` // itemID
 }
@@ -117,5 +117,5 @@ type QuestResponse struct {
 type QuestsEntry struct {
 	QuestID     string `json:"quest_id"`
 	Description string `json:"description"`
-	State       string `json:"status"` // "active" | "completed"
+	State       string `json:"status"` // active or completed
 }

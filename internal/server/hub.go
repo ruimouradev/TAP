@@ -1,6 +1,6 @@
-// hub.go: the heart of all server concurrency. The Hub is the ONLY goroutine
-// that reads or mutates game state. Clients talk to it through channels, and it
-// handles one event at a time in its select loop - so no mutexes are needed.
+// hub.go: the heart of all server concurrency. The Hub is the only goroutine
+// that reads or changes game state. Clients talk to it through channels and it
+// handles one event at a time in its select loop, so no mutexes are needed.
 package server
 
 import (
@@ -12,8 +12,9 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// Rapid-connection detection: more than connLimit connections from one IP within
-// connWindow is logged as a possible abuse pattern (we monitor, not block).
+// Rapid connection detection. More than connLimit connections from one IP
+// inside connWindow is logged as a possible abuse pattern. We just log it,
+// we do not block.
 const (
 	connWindow = 10 * time.Second
 	connLimit  = 5
@@ -25,11 +26,11 @@ type Hub struct {
 	unregister chan *Client
 	commands   chan incomingCmd
 	clients    map[*Client]struct{} // set of connected clients
-	groups     map[string]*Group    // groupID -> Group (empty until groups exist)
+	groups     map[string]*Group    // groupID -> Group, empty until groups exist
 	world      *game.World          // only the Hub touches this
 	log        *slog.Logger
 
-	// rapid-connection tracking per IP (only touched in the Hub goroutine, no lock)
+	// rapid connection tracking per IP, only touched in the Hub goroutine so no lock
 	connRate map[string]*rateWindow
 }
 
@@ -88,8 +89,8 @@ func (h *Hub) Run() {
 			}
 
 		case ic := <-h.commands:
-			// ignore commands from a client already gone (register/unregister
-			// and commands arrive on different channels and may reorder)
+			// ignore commands from a client already gone. register, unregister
+			// and commands arrive on different channels and may reorder
 			if _, ok := h.clients[ic.client]; ok {
 				h.dispatch(ic.client, ic.cmd)
 			}
@@ -119,7 +120,8 @@ func (h *Hub) broadcastAll(msg string) {
 }
 
 // removeClient takes the player out of the world and announces the departure.
-// Must run inside Run(). State is removed BEFORE the broadcast (spec).
+// Must run inside Run. The state is removed before the broadcast, as the
+// subject asks.
 func (h *Hub) removeClient(c *Client) {
 	if c.username == "" {
 		return // never finished CONNECT
@@ -184,9 +186,9 @@ func (h *Hub) updatePlayerCount() {
 	h.broadcastAll(protocol.StatsPlayers(h.world.TotalPlayers()))
 }
 
-// trackRapidConnections counts connections per IP in a sliding window and logs a
-// WARN when one IP crosses the limit (abuse monitoring, not blocking). Runs in
-// the Hub goroutine on register, so the maps need no lock.
+// trackRapidConnections counts connections per IP in a sliding window and logs
+// a WARN when one IP crosses the limit. This is abuse monitoring, not blocking.
+// Runs in the Hub goroutine on register, so the map needs no lock.
 func (h *Hub) trackRapidConnections(c *Client) {
 	host, _, err := net.SplitHostPort(c.addr)
 	if err != nil {
