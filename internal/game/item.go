@@ -1,5 +1,6 @@
-// item.go: the Item type and TAKE/DROP logic. Items are unique instances,
-// matched by ID or by display name (case-insensitive, multi-word supported).
+// item.go: the Item type and the TAKE and DROP logic. Items are unique
+// instances, matched by ID or by display name. Matching ignores case and
+// multi-word names are supported.
 package game
 
 import (
@@ -9,8 +10,8 @@ import (
 
 // Item is a unique instance of a game resource.
 type Item struct {
-	ID   string // canonical ID, e.g. "item.healing_potion"
-	Name string // display name, e.g. "Healing Potion"
+	ID   string // canonical ID, like "item.healing_potion"
+	Name string // display name, like "Healing Potion"
 }
 
 var (
@@ -18,7 +19,7 @@ var (
 	ErrItemNotInInventory = errors.New("item not in inventory")
 )
 
-// FindItem matches an item by ID first, then by display name (case-insensitive).
+// FindItem matches an item by ID first, then by display name, ignoring case.
 func FindItem(items map[string]*Item, identifier string) (*Item, bool) {
 	if it, ok := items[identifier]; ok {
 		return it, true

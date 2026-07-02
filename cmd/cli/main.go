@@ -1,5 +1,5 @@
-// cmd/cli: the TAP command-line client. Sends raw RFC commands typed by the
-// user and prints everything the server sends, in real time. Two goroutines:
+// cmd/cli: the TAP command line client. Sends the raw RFC commands typed by
+// the user and prints everything the server sends, in real time. Two goroutines:
 // readLoop (socket -> stdout) and writeLoop (stdin -> socket).
 package main
 

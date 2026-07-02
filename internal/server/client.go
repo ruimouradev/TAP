@@ -11,20 +11,20 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// sendBufferSize is the max number of queued messages per client.
+// max number of queued messages per client
 const sendBufferSize = 32
 
 // Client represents a single connected player's TCP connection.
 type Client struct {
 	conn         net.Conn
 	hub          *Hub
-	send         chan string // buffered; writePump drains it
+	send         chan string // buffered, writePump drains it
 	username     string      // empty before CONNECT succeeds
 	invitedGroup string      // pending group invite (group ID), empty if none
 	addr         string      // remote IP:port, kept for logging after close
 	log          *slog.Logger
 
-	// command-flood detection (only touched inside the Hub goroutine, so no lock)
+	// command flood detection (only touched inside the Hub goroutine, so no lock)
 	cmdRate rateWindow
 }
 
@@ -65,7 +65,7 @@ func (c *Client) writePump() {
 }
 
 // safeSend queues msg without ever blocking the Hub. A full buffer means the
-// client is too slow, so we drop the connection (cleanup runs via readPump).
+// client is too slow, so we drop the connection. Cleanup then runs via readPump.
 func (c *Client) safeSend(msg string) {
 	select {
 	case c.send <- msg:

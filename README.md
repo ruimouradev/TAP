@@ -291,7 +291,7 @@ INVENTORY          # contains item.bakers_gratitude
 - [A Tour of Go](https://go.dev/tour) - goroutines and channels
 - [Effective Go](https://go.dev/doc/effective_go)
 - [Go Concurrency Patterns - Rob Pike](https://go.dev/talks/2012/concurrency.slide)
-- [RFC 42TAP](rfc/protocol-rfc.html) - project protocol specification
+- RFC 42TAP - project protocol specification, provided with the 42 subject
 
 ### AI Usage
 

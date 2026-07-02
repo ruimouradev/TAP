@@ -20,7 +20,7 @@ func FuzzParse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, line string) {
 		cmd, err := Parse(line)
 		if err != nil {
-			return // rejecting input is fine; it just must not panic
+			return // rejecting input is fine, it just must not panic
 		}
 		if cmd.Verb == "" {
 			t.Fatalf("Parse(%q) succeeded but Verb is empty", line)

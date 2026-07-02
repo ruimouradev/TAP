@@ -1,6 +1,6 @@
-// errors.go: RFC 42TAP errors as typed values. Bundling the numeric code and
-// its message token in one value means a code can never drift from its message -
-// there is a single source of truth per error.
+// errors.go: RFC 42TAP errors as typed values. Keeping the numeric code and
+// its message token in one value means a code can never drift from its
+// message. There is a single source of truth per error.
 package protocol
 
 import "fmt"
@@ -31,9 +31,9 @@ var (
 	ErrSendFailed       = Error{901, "SEND_FAILED"}
 )
 
-// BadRequest builds a 400 error for input the RFC leaves undefined (unknown
-// verb, not connected, missing/invalid arguments). 400 is our documented
-// extension - see the README Protocol Implementation section.
+// BadRequest builds a 400 error for input the RFC leaves undefined, like an
+// unknown verb, a command before CONNECT or missing arguments. 400 is our own
+// extension and is documented in the README Protocol Implementation section.
 func BadRequest(msg string) Error {
 	return Error{400, msg}
 }

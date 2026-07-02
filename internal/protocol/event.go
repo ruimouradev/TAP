@@ -37,14 +37,14 @@ func GroupChat(username, message string) string {
 }
 
 // RoomCombat announces one combat round to the other players in the room.
-// Combat events are not in the RFC's category list; documented as a deviation.
+// Combat events are not in the RFC's category list. Documented as a deviation.
 func RoomCombat(attacker, target string, damage, targetHP int) string {
 	return fmt.Sprintf("EVT ROOM COMBAT %s %s %d %d\n", attacker, target, damage, targetHP)
 }
 
-// RoomItemTaken / RoomItemDropped tell the rest of the room that an item was
+// RoomItemTaken and RoomItemDropped tell the rest of the room that an item was
 // picked up or dropped, so other clients refresh their room view instantly
-// instead of polling. Not in the RFC's event list; documented as a deviation.
+// instead of polling. Not in the RFC's event list. Documented as a deviation.
 func RoomItemTaken(username, itemID string) string {
 	return fmt.Sprintf("EVT ROOM ITEM TAKEN %s %s\n", username, itemID)
 }

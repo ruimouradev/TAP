@@ -8,7 +8,7 @@ import (
 	"the-answer-protocol/internal/protocol"
 )
 
-// handleConnect: CONNECT <username>. p is nil here - the player is created now.
+// handleConnect: CONNECT <username>. p is nil here because the player is created now.
 func handleConnect(h *Hub, c *Client, p *game.Player, args []string) string {
 	if c.username != "" {
 		return protocol.BadRequest("ALREADY_CONNECTED").Wire()
@@ -24,14 +24,14 @@ func handleConnect(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OK("connected")
 }
 
-// handleQuit: QUIT - the client closes the connection on "OK bye"; the server's
-// readPump then sees the close and unregisters. The server never closes the
-// socket itself.
+// handleQuit: QUIT. The client closes the connection when it gets "OK bye".
+// The server's readPump then sees the close and unregisters. The server never
+// closes the socket itself.
 func handleQuit(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OK("bye")
 }
 
-// handleLook: LOOK - current room state as JSON.
+// handleLook: LOOK. Returns the current room state as JSON.
 func handleLook(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKJson(buildLook(h, h.world.GetRoom(p.CurrentRoom)))
 }
@@ -39,7 +39,8 @@ func handleLook(h *Hub, c *Client, p *game.Player, args []string) string {
 // handleMove: MOVE <direction>
 func handleMove(h *Hub, c *Client, p *game.Player, args []string) string {
 	from := p.CurrentRoom
-	dest, err := h.world.MovePlayer(p, args[0])
+	// exits are keyed lowercase, so accept MOVE NORTH as well as MOVE north
+	dest, err := h.world.MovePlayer(p, strings.ToLower(args[0]))
 	if err != nil {
 		return protocol.ErrNoExit.Wire()
 	}
@@ -48,7 +49,7 @@ func handleMove(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKf("room=%s", dest.ID)
 }
 
-// handleWho: WHO - players in this room + total online, as JSON.
+// handleWho: WHO. Players in this room plus the total online, as JSON.
 func handleWho(h *Hub, c *Client, p *game.Player, args []string) string {
 	return protocol.OKJson(protocol.WhoResponse{
 		Room:   h.world.PlayersInRoom(p.CurrentRoom),

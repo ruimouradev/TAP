@@ -13,23 +13,20 @@ import (
 type Command struct {
 	Verb string   // uppercased verb
 	Args []string // arguments after the verb
-	Raw  string   // original line, no trailing \n
 }
 
 var ErrEmptyCommand = errors.New("empty command")
 
-// Parse turns a wire line into a Command. Verb is uppercased; args keep case.
+// Parse turns a wire line into a Command. The verb is uppercased, args keep their case.
 func Parse(line string) (Command, error) {
 	clean := strings.TrimRight(line, "\r") // tolerate CRLF
 	fields := strings.Fields(clean)
 	if len(fields) == 0 {
 		return Command{}, ErrEmptyCommand
 	}
-	// CHAT and friends keep their text split across Args; handlers use Raw.
 	return Command{
 		Verb: strings.ToUpper(fields[0]),
 		Args: fields[1:],
-		Raw:  clean,
 	}, nil
 }
 
